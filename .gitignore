@@ -1,0 +1,15 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+
+# SQLite Databases (optional: omit if you generate them dynamically via setup scripts)
+databases/*.db
+*.sqlite3
+
+# Environment & API Keys
+.env

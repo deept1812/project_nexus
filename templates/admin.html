@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Nexus | Admin Escalation Queue</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f4f7f6; margin: 0; padding: 0; }
+        
+        .navbar { width: 100%; background: #0f172a; padding: 14px 30px; display: flex; justify-content: space-between; align-items: center; color: white; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+        .navbar .brand { font-weight: bold; font-size: 1.1rem; }
+        .navbar .nav-links a { color: #94a3b8; text-decoration: none; margin-left: 18px; font-size: 0.88rem; font-weight: 500; }
+        .navbar .nav-links a.active { color: #38bdf8; font-weight: bold; border-bottom: 2px solid #38bdf8; padding-bottom: 4px; }
+
+        .container { max-width: 1150px; margin: 30px auto; padding: 0 20px; }
+        
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 25px; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align: center; }
+        .card h3 { margin: 0; font-size: 0.85rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .card .metric { font-size: 1.8rem; font-weight: bold; margin-top: 8px; color: #0f172a; }
+        .card.open .metric { color: #d97706; }
+        .card.resolved .metric { color: #16a34a; }
+
+        .table-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+        .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; }
+        .table-header h2 { margin: 0; font-size: 1.3rem; color: #1e293b; }
+        .refresh-btn { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; }
+        th { background: #f8fafc; color: #475569; font-weight: 600; }
+        
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+        .badge-HIGH { background: #fee2e2; color: #991b1b; }
+        .badge-MEDIUM { background: #fef3c7; color: #92400e; }
+        .badge-LOW { background: #e0e7ff; color: #3730a3; }
+        
+        .status-OPEN { color: #d97706; font-weight: bold; }
+        .status-RESOLVED { color: #16a34a; font-weight: bold; }
+        
+        .action-form { display: flex; gap: 8px; }
+        .action-form input { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; outline: none; }
+        .action-form button { padding: 6px 12px; background: #16a34a; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<div class="navbar">
+    <div class="brand">⚡ Project Nexus Operations</div>
+    <div class="nav-links">
+        <a href="/">👤 Customer App</a>
+        <a href="/inbox">📬 Mail Inbox</a>
+        <a href="/warehouse">🏬 Warehouse WMS</a>
+        <a href="/delivery">🚚 Delivery Partner</a>
+        <a href="/admin" class="active">🛡️ Admin Queue</a>
+    </div>
+</div>
+
+<div class="container">
+    <div class="metrics-grid">
+        <div class="card">
+            <h3>Total Escalations</h3>
+            <div class="metric">{{ metrics.total }}</div>
+        </div>
+        <div class="card open">
+            <h3>Open Tickets</h3>
+            <div class="metric">{{ metrics.open }}</div>
+        </div>
+        <div class="card">
+            <h3>High Priority</h3>
+            <div class="metric">{{ metrics.high_priority }}</div>
+        </div>
+        <div class="card resolved">
+            <h3>Resolved Tickets</h3>
+            <div class="metric">{{ metrics.resolved }}</div>
+        </div>
+    </div>
+
+    <div class="table-card">
+        <div class="table-header">
+            <h2>Support Ticket Queue</h2>
+            <a href="/admin" class="refresh-btn">🔄 Refresh Queue</a>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Ticket ID</th>
+                    <th>Order ID</th>
+                    <th>Customer Issue</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Action / Resolution Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ticket in tickets %}
+                <tr>
+                    <td><strong>{{ ticket[0] }}</strong></td>
+                    <td>{{ ticket[1] }}</td>
+                    <td>{{ ticket[2] }}</td>
+                    <td><span class="badge badge-{{ ticket[3] }}">{{ ticket[3] }}</span></td>
+                    <td><span class="status-{{ ticket[4] }}">{{ ticket[4] }}</span></td>
+                    <td>
+                        {% if ticket[4] == 'OPEN' %}
+                        <form class="action-form" action="/admin/resolve" method="POST">
+                            <input type="hidden" name="ticket_id" value="{{ ticket[0] }}">
+                            <input type="text" name="notes" placeholder="Resolution notes..." required>
+                            <button type="submit">Resolve</button>
+                        </form>
+                        {% else %}
+                        <small style="color: #475569;"><em>{{ ticket[5] or 'Resolved' }}</em></small>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; color: #64748b; padding: 25px;">No support tickets found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+</body>
+</html>
