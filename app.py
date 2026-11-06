@@ -1,13 +1,14 @@
 import os
 import sys
-from flask import Flask, render_template, request, jsonify, redirect, url_for
-from flask_sqlalchemy import SQLAlchemy  # type: ignore[reportMissingImports]
+from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Ensure internal modules in root can be imported cleanly
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
+from extensions import db
+from models import SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
 from agents.nexus_orchestrator import run_agent_workflow_with_logs
 
 app = Flask(__name__)
@@ -16,65 +17,44 @@ app = Flask(__name__)
 db_url = os.getenv("DATABASE_URL")
 
 if db_url:
-    # Convert standard postgres/postgresql URIs to explicit SQLAlchemy psycopg2 dialect
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     
-    # Enforce SSL mode for cloud PostgreSQL connection (Render)
     if "?" not in db_url:
         db_url += "?sslmode=require"
 else:
-    # Local fallback sqlite database
     db_url = "sqlite:///nexus.db"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+# Bind SQLAlchemy to Flask app instance
+db.init_app(app)
 
-# --- DATABASE MODELS ---
-class SupportTicket(db.Model):
-    __tablename__ = 'support_tickets'
-    ticket_id = db.Column(db.String(50), primary_key=True)
-    order_id = db.Column(db.String(50))
-    customer_issue = db.Column(db.Text)
-    priority = db.Column(db.String(20))
-    status = db.Column(db.String(20))
-    resolution_notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-
-class SentEmail(db.Model):
-    __tablename__ = 'sent_emails'
-    email_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    recipient_email = db.Column(db.String(120))
-    ticket_id = db.Column(db.String(50))
-    order_id = db.Column(db.String(50))
-    subject = db.Column(db.String(200))
-    body = db.Column(db.Text)
-    sent_at = db.Column(db.DateTime, server_default=db.func.now())
-
-class WarehouseStock(db.Model):
-    __tablename__ = 'warehouse_stock'
-    order_id = db.Column(db.String(50), primary_key=True)
-    item_name = db.Column(db.String(100))
-    dispatch_status = db.Column(db.String(50))
-    hub_location = db.Column(db.String(100))
-
-class DeliveryStatus(db.Model):
-    __tablename__ = 'delivery_status'
-    order_id = db.Column(db.String(50), primary_key=True)
-    carrier = db.Column(db.String(50))
-    transit_status = db.Column(db.String(50))
-    delay_reason = db.Column(db.String(100))
-    estimated_delivery = db.Column(db.String(20))
-
-# Initialize database schema automatically on boot
 with app.app_context():
     db.create_all()
+    
+    # Seed sample delivery status records if empty
+    if not DeliveryStatus.query.first():
+        db.session.bulk_save_objects([
+            DeliveryStatus(order_id="ORD1001", carrier="FedEx", transit_status="In Transit", delay_reason="None", estimated_delivery="2026-11-08"),
+            DeliveryStatus(order_id="ORD1002", carrier="DHL", transit_status="Delayed", delay_reason="Severe Weather", estimated_delivery="2026-11-10"),
+            DeliveryStatus(order_id="ORD1003", carrier="BlueDart", transit_status="Out for Delivery", delay_reason="None", estimated_delivery="2026-11-07")
+        ])
+        db.session.commit()
 
-# --- APPLICATION ROUTES ---
+    # Seed sample warehouse records if empty
+    if not WarehouseStock.query.first():
+        db.session.bulk_save_objects([
+            WarehouseStock(order_id="ORD1001", item_name="Logistics Controller Unit", dispatch_status="Dispatched", hub_location="Mumbai Hub A"),
+            WarehouseStock(order_id="ORD1002", item_name="Sensors Pack x10", dispatch_status="Processing", hub_location="Bengaluru Hub C"),
+            WarehouseStock(order_id="ORD1003", item_name="Industrial Router", dispatch_status="Ready for Pickup", hub_location="Delhi Hub B")
+        ])
+        db.session.commit()
+
+# --- ROUTES ---
 
 @app.route("/")
 def index():
@@ -105,8 +85,6 @@ def admin_dashboard():
         "resolved": SupportTicket.query.filter_by(status='RESOLVED').count()
     }
     return render_template("admin.html", tickets=tickets, metrics=metrics)
-
-# --- AI API ENDPOINT ---
 
 @app.route("/api/query", methods=["POST"])
 def process_query():
