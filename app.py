@@ -1,27 +1,40 @@
 import os
 import sys
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-from flask_sqlalchemy import SQLAlchemy
+from flask_sqlalchemy import SQLAlchemy  # type: ignore[reportMissingImports]
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# Ensure internal modules in root can be imported cleanly
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from agents.nexus_orchestrator import run_agent_workflow_with_logs
 
 app = Flask(__name__)
 
-# Fetch database URL from environment (Render PostgreSQL), fallback to local sqlite if not set
-db_url = os.getenv("DATABASE_URL", "sqlite:///nexus.db")
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
+# --- DATABASE CONFIGURATION ---
+db_url = os.getenv("DATABASE_URL")
+
+if db_url:
+    # Convert standard postgres/postgresql URIs to explicit SQLAlchemy psycopg2 dialect
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    
+    # Enforce SSL mode for cloud PostgreSQL connection (Render)
+    if "?" not in db_url:
+        db_url += "?sslmode=require"
+else:
+    # Local fallback sqlite database
+    db_url = "sqlite:///nexus.db"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Define Enterprise Models
+# --- DATABASE MODELS ---
 class SupportTicket(db.Model):
     __tablename__ = 'support_tickets'
     ticket_id = db.Column(db.String(50), primary_key=True)
@@ -57,10 +70,11 @@ class DeliveryStatus(db.Model):
     delay_reason = db.Column(db.String(100))
     estimated_delivery = db.Column(db.String(20))
 
+# Initialize database schema automatically on boot
 with app.app_context():
     db.create_all()
 
-# --- ROUTES ---
+# --- APPLICATION ROUTES ---
 
 @app.route("/")
 def index():
@@ -92,6 +106,8 @@ def admin_dashboard():
     }
     return render_template("admin.html", tickets=tickets, metrics=metrics)
 
+# --- AI API ENDPOINT ---
+
 @app.route("/api/query", methods=["POST"])
 def process_query():
     data = request.get_json()
@@ -101,7 +117,7 @@ def process_query():
 
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        return jsonify({"status": "error", "response": "GROQ_API_KEY not configured."}), 500
+        return jsonify({"status": "error", "response": "GROQ_API_KEY environment variable is missing."}), 500
 
     try:
         agent_response, execution_logs = run_agent_workflow_with_logs(history, api_key)
