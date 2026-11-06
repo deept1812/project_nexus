@@ -21,14 +21,20 @@ pipeline {
                 '''
             }
         }
+
+        stage('3. Trigger Render Auto-Deploy') {
+            steps {
+                bat 'curl -X POST https://api.render.com/deploy/srv-dbn0vajm8hqs73bkrbf0?key=k0nNbYPAVJo'
+            }
+        }
     }
 
     post {
         success {
-            echo 'Jenkins CI/CD Build & Verification Passed!'
+            echo 'Jenkins CI/CD Pipeline Passed! Deployment trigger successfully sent to Render.'
         }
         failure {
-            echo 'Pipeline failed. Check build logs above.'
+            echo 'Pipeline failed. Deployment skipped.'
         }
     }
 }
