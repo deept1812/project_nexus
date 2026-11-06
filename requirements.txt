@@ -4,4 +4,5 @@ gunicorn==21.2.0
 pytest==7.4.3
 python-dotenv==1.0.0
 Flask-SQLAlchemy==3.1.1
+psycopg[binary]
 psycopg2-binary
