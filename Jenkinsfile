@@ -5,10 +5,10 @@ pipeline {
         stage('1. Setup Environment & Install Dependencies') {
             steps {
                 bat '''
-                py -m venv venv
+                python -m venv venv || py -m venv venv || "C:\\Users\\User\\OneDrive\\Desktop\\Project_Nexus\\venv\\Scripts\\python.exe" -m venv venv
                 call venv\\Scripts\\activate
-                py -m pip install --upgrade pip
-                py -m pip install -r requirements.txt
+                python -m pip install --upgrade pip
+                python -m pip install -r requirements.txt
                 '''
             }
         }
@@ -17,7 +17,7 @@ pipeline {
             steps {
                 bat '''
                 call venv\\Scripts\\activate
-                py -c "import app; print('App syntax check passed successfully!')"
+                python -c "import app; print('App syntax check passed successfully!')"
                 '''
             }
         }
@@ -28,7 +28,7 @@ pipeline {
             echo 'Jenkins CI/CD Build & Verification Passed!'
         }
         failure {
-            echo 'Pipeline failed. Check logs above.'
+            echo 'Pipeline failed. Check build logs above.'
         }
     }
 }
