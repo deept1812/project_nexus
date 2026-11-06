@@ -3,95 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project Nexus | Warehouse Portal</title>
+    <title>Warehouse WMS - Project Nexus</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background-color: #f4f7f6; margin: 0; padding: 0; }
-        .navbar { width: 100%; background: #0f172a; padding: 14px 30px; display: flex; justify-content: space-between; align-items: center; color: white; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
-        .navbar .brand { font-weight: bold; font-size: 1.1rem; }
-        .navbar .nav-links a { color: #94a3b8; text-decoration: none; margin-left: 18px; font-size: 0.88rem; font-weight: 500; }
-        .navbar .nav-links a.active { color: #38bdf8; font-weight: bold; border-bottom: 2px solid #38bdf8; padding-bottom: 4px; }
-        
-        .container { max-width: 1100px; margin: 25px auto; padding: 0 20px; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
-        .card { background: white; padding: 22px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
-        h2 { margin: 0 0 16px 0; font-size: 1.25rem; color: #1e293b; }
-        
-        form { display: flex; flex-direction: column; gap: 12px; }
-        input, select { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; }
-        button { padding: 10px; background: #0284c7; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
-        button:hover { background: #0369a1; }
-
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.88rem; }
-        th { background: #f8fafc; color: #475569; }
-        
-        .action-btn { padding: 6px 12px; background: #16a34a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+        body { background-color: #f8f9fa; }
+        .navbar { background-color: #1e293b; }
+        .card { border-radius: 10px; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
 
-<div class="navbar">
-    <div class="brand">🏬 Warehouse Management System (WMS)</div>
-    <div class="nav-links">
-        <a href="/">👤 Customer App</a>
-        <a href="/inbox">📬 Mail Inbox</a>
-        <a href="/warehouse" class="active">🏬 Warehouse WMS</a>
-        <a href="/delivery">🚚 Delivery Partner</a>
-        <a href="/admin">🛡️ Admin Queue</a>
-    </div>
-</div>
-
-<div class="container">
-    <div class="grid-2">
-        <div class="card">
-            <h2>📦 Scan / Receive Item</h2>
-            <form action="/warehouse/receive" method="POST">
-                <input type="text" name="order_id" placeholder="Order ID (e.g. ORD-105)" required>
-                <input type="text" name="item_name" placeholder="Item Name (e.g. Sony Headphones)" required>
-                <input type="text" name="hub_location" placeholder="Warehouse Hub (e.g. Hub-Alpha-Chicago)" required>
-                <button type="submit">+ Add to Warehouse DB</button>
-            </form>
+    <!-- Navigation Header -->
+    <nav class="navbar navbar-expand-lg navbar-dark px-4 mb-4">
+        <a class="navbar-brand fw-bold" href="/">⚡ Project Nexus Support</a>
+        <div class="ms-auto d-flex gap-3">
+            <a class="nav-link text-white" href="/">👤 Customer App</a>
+            <a class="nav-link text-white" href="/inbox">📫 Mail Inbox</a>
+            <a class="nav-link text-white fw-bold active" href="/warehouse">🏬 Warehouse WMS</a>
+            <a class="nav-link text-white" href="/delivery">🚚 Delivery Partner</a>
+            <a class="nav-link text-white" href="/admin">🛡️ Admin Queue</a>
         </div>
+    </nav>
 
-        <div class="card">
-            <h2>🏬 Stock & Dispatch Control</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Item</th>
-                        <th>Status</th>
-                        <th>Hub Location</th>
-                        <th>Handoff Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in items %}
-                    <tr>
-                        <td><strong>{{ item[0] }}</strong></td>
-                        <td>{{ item[1] }}</td>
-                        <td>{{ item[2] }}</td>
-                        <td>{{ item[3] }}</td>
-                        <td>
-                            {% if item[2] != 'Handed Over to Delivery' %}
-                            <form action="/warehouse/dispatch" method="POST" style="margin:0;">
-                                <input type="hidden" name="order_id" value="{{ item[0] }}">
-                                <button type="submit" class="action-btn">Hand Over to Courier</button>
-                            </form>
-                            {% else %}
-                            <span style="color:#16a34a; font-weight:bold;">In Delivery DB</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" style="text-align:center;">No warehouse items found.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <div class="container">
+        <div class="row g-4">
+            
+            <!-- Left Panel: Scan / Receive Item Form -->
+            <div class="col-md-4">
+                <div class="card p-4">
+                    <h5 class="fw-bold mb-3">📦 Scan / Receive Item</h5>
+                    
+                    <form action="/warehouse/add" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ORDER ID</label>
+                            <input type="text" name="order_id" class="form-control" placeholder="Order ID (e.g. ORD-105)" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ITEM NAME</label>
+                            <input type="text" name="item_name" class="form-control" placeholder="Item Name (e.g. Sony Headphones)" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">WAREHOUSE HUB</label>
+                            <input type="text" name="hub_location" class="form-control" placeholder="Warehouse Hub (e.g. Hub-Alpha-Chicago)" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">+ Add to Warehouse DB</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right Panel: Stock & Dispatch Control Table -->
+            <div class="col-md-8">
+                <div class="card p-4">
+                    <h5 class="fw-bold mb-3">🏬 Stock & Dispatch Control</h5>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Item</th>
+                                    <th>Status</th>
+                                    <th>Hub Location</th>
+                                    <th>Handoff Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if items %}
+                                    {% for item in items %}
+                                    <tr>
+                                        <td class="fw-bold">{{ item.order_id }}</td>
+                                        <td>{{ item.item_name }}</td>
+                                        <td>
+                                            <span class="badge {% if item.dispatch_status == 'Handed Over to Courier' %}bg-success{% elif item.dispatch_status == 'Cancelled' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                                {{ item.dispatch_status }}
+                                            </span>
+                                        </td>
+                                        <td>{{ item.hub_location }}</td>
+                                        <td>
+                                            {% if item.dispatch_status != 'Handed Over to Courier' and item.dispatch_status != 'Cancelled' %}
+                                            <form action="/warehouse/handoff/{{ item.order_id }}" method="POST" class="d-inline">
+                                                <button type="submit" class="btn btn-sm btn-success fw-bold">Hand Over to Courier</button>
+                                            </form>
+                                            {% else %}
+                                            <button class="btn btn-sm btn-secondary" disabled>Completed</button>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-4">No warehouse inventory records found. Add an item on the left panel to get started.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
-</div>
 
 </body>
 </html>
