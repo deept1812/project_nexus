@@ -1,41 +1,28 @@
-import sqlite3
 import os
+import sys
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'databases', 'logistics.db')
+# Add project root to Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-def format_order_id(oid: str) -> str:
-    if not oid:
-        return "ORD-101"
-    oid = str(oid).upper().strip()
-    if oid.isdigit():
-        return f"ORD-{oid}"
-    if "ORD" in oid and not oid.startswith("ORD-"):
-        return oid.replace("ORD", "ORD-")
-    return oid
+from app import app, db, DeliveryStatus
 
-def query_logistics_db(order_id: str) -> str:
-    """Queries Delivery Partner SQLite DB for tracking status, carrier info, and delay reasons."""
-    order_id = format_order_id(order_id)
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute("PRAGMA table_info(delivery_status)")
-        columns = [col[1] for col in cursor.fetchall()]
-        has_address = "shipping_address" in columns
+def get_delivery_status(order_id: str) -> str:
+    """Fetch live delivery status from PostgreSQL."""
+    with app.app_context():
+        shipment = DeliveryStatus.query.get(order_id)
+        if shipment:
+            return (f"Order ID: {shipment.order_id} | Carrier: {shipment.carrier} | "
+                    f"Status: {shipment.transit_status} | Reason: {shipment.delay_reason} | "
+                    f"Est. Delivery: {shipment.estimated_delivery}")
+        return f"No delivery status found for Order ID {order_id}."
 
-        if has_address:
-            cursor.execute("SELECT order_id, carrier, transit_status, delay_reason, estimated_delivery, shipping_address FROM delivery_status WHERE order_id = ?", (order_id,))
-        else:
-            cursor.execute("SELECT order_id, carrier, transit_status, delay_reason, estimated_delivery FROM delivery_status WHERE order_id = ?", (order_id,))
-            
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            address_str = f"\n- Delivery Address: {row[5]}" if has_address and len(row) > 5 and row[5] else ""
-            return f"Logistics DB Record:\n- Order ID: {row[0]}\n- Carrier: {row[1]}\n- Transit Status: {row[2]}\n- Delay Reason: {row[3]}\n- Estimated Delivery: {row[4]}{address_str}"
-        else:
-            return f"No logistics tracking record found for Order ID '{order_id}'."
-    except Exception as e:
-        return f"Error querying logistics DB: {str(e)}"
+def update_delivery_status(order_id: str, new_status: str, delay_reason: str = "None") -> str:
+    """Update delivery status directly in PostgreSQL in real time."""
+    with app.app_context():
+        shipment = DeliveryStatus.query.get(order_id)
+        if shipment:
+            shipment.transit_status = new_status
+            shipment.delay_reason = delay_reason
+            db.session.commit()
+            return f"Updated delivery status for {order_id} to '{new_status}' in live database."
+        return f"Order ID {order_id} not found in logistics system."

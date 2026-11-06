@@ -1,31 +1,25 @@
-import sqlite3
 import os
+import sys
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'databases', 'warehouse.db')
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-def format_order_id(oid: str) -> str:
-    if not oid:
-        return "ORD-101"
-    oid = str(oid).upper().strip()
-    if oid.isdigit():
-        return f"ORD-{oid}"
-    if "ORD" in oid and not oid.startswith("ORD-"):
-        return oid.replace("ORD", "ORD-")
-    return oid
+from app import app, db, WarehouseStock
 
-def query_warehouse_db(order_id: str) -> str:
-    """Queries Warehouse SQLite DB for order stock, hub location, and dispatch status."""
-    order_id = format_order_id(order_id)
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT order_id, item_name, dispatch_status, hub_location FROM warehouse_stock WHERE order_id = ?", (order_id,))
-        row = cursor.fetchone()
-        conn.close()
+def get_warehouse_stock(order_id: str) -> str:
+    """Fetch live warehouse inventory status from PostgreSQL."""
+    with app.app_context():
+        item = WarehouseStock.query.get(order_id)
+        if item:
+            return (f"Order ID: {item.order_id} | Item: {item.item_name} | "
+                    f"Dispatch Status: {item.dispatch_status} | Hub: {item.hub_location}")
+        return f"No warehouse inventory record found for Order ID {order_id}."
 
-        if row:
-            return f"Warehouse DB Record:\n- Order ID: {row[0]}\n- Item Name: {row[1]}\n- Warehouse Status: {row[2]}\n- Hub Location: {row[3]}"
-        else:
-            return f"No warehouse record found for Order ID '{order_id}'."
-    except Exception as e:
-        return f"Error querying warehouse DB: {str(e)}"
+def update_warehouse_status(order_id: str, new_status: str) -> str:
+    """Update warehouse status directly in PostgreSQL in real time."""
+    with app.app_context():
+        item = WarehouseStock.query.get(order_id)
+        if item:
+            item.dispatch_status = new_status
+            db.session.commit()
+            return f"Updated warehouse status for {order_id} to '{new_status}' in live database."
+        return f"Order ID {order_id} not found in warehouse inventory."
