@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Add project root directory to path for internal module imports
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from extensions import db
@@ -19,57 +18,47 @@ app = Flask(__name__)
 db_url = os.getenv("DATABASE_URL")
 
 if db_url:
-    # Handle Render PostgreSQL URI dialect requirements
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     
-    # Enforce SSL mode for Render cloud database connection
     if "?" not in db_url:
         db_url += "?sslmode=require"
 else:
-    # Local SQLite fallback if environment variable is not set
     db_url = "sqlite:///nexus.db"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Initialize SQLAlchemy extension instance with Flask app
 db.init_app(app)
 
-# Ensure database tables exist in PostgreSQL upon boot
 with app.app_context():
     db.create_all()
 
-# --- WEB PORTAL DISPLAY ROUTES ---
+# --- WEB PORTAL ROUTES ---
 
 @app.route("/")
 def index():
-    """Customer Support Chat Assistant UI."""
     return render_template("index.html")
 
 @app.route("/inbox")
 def customer_inbox():
-    """Sent Mail logs view."""
     emails = SentEmail.query.order_by(SentEmail.sent_at.desc()).all()
     return render_template("inbox.html", emails=emails)
 
 @app.route("/warehouse")
 def warehouse_portal():
-    """Warehouse Stock & Handoff Management view."""
     items = WarehouseStock.query.order_by(WarehouseStock.order_id.desc()).all()
     return render_template("warehouse.html", items=items)
 
 @app.route("/delivery")
 def delivery_portal():
-    """Delivery Partner Tracking view."""
     shipments = DeliveryStatus.query.order_by(DeliveryStatus.order_id.desc()).all()
     return render_template("delivery.html", shipments=shipments)
 
 @app.route("/admin")
 def admin_dashboard():
-    """Admin Support Ticket Queue view."""
     tickets = SupportTicket.query.order_by(SupportTicket.created_at.desc()).all()
     metrics = {
         "total": SupportTicket.query.count(),
@@ -83,7 +72,6 @@ def admin_dashboard():
 
 @app.route("/warehouse/add", methods=["POST"])
 def add_warehouse_item():
-    """Form / API POST route to insert new items directly into PostgreSQL."""
     order_id = request.form.get("order_id") or request.json.get("order_id")
     item_name = request.form.get("item_name") or request.json.get("item_name")
     hub_location = request.form.get("hub_location") or request.json.get("hub_location")
@@ -91,7 +79,6 @@ def add_warehouse_item():
     if not order_id or not item_name:
         return jsonify({"status": "error", "message": "Order ID and Item Name required"}), 400
 
-    # Insert into WarehouseStock table
     new_item = WarehouseStock(
         order_id=order_id,
         item_name=item_name,
@@ -99,7 +86,6 @@ def add_warehouse_item():
         hub_location=hub_location or "Main Warehouse"
     )
     
-    # Initialize parallel DeliveryStatus record
     new_shipment = DeliveryStatus(
         order_id=order_id,
         carrier="Pending Carrier",
@@ -114,10 +100,8 @@ def add_warehouse_item():
 
     return redirect(url_for("warehouse_portal"))
 
-
 @app.route("/warehouse/handoff/<order_id>", methods=["POST"])
 def handoff_to_courier(order_id):
-    """Update item status and guarantee DeliveryStatus row exists in PostgreSQL using SQLAlchemy 2.0 syntax."""
     item = db.session.get(WarehouseStock, order_id)
     shipment = db.session.get(DeliveryStatus, order_id)
 
@@ -141,10 +125,8 @@ def handoff_to_courier(order_id):
     db.session.commit()
     return redirect(url_for("warehouse_portal"))
 
-
 @app.route("/delivery/update", methods=["POST"])
 def update_delivery():
-    """Update last-mile delivery tracking details from Delivery Partner App using SQLAlchemy 2.0 syntax."""
     order_id = request.form.get("order_id")
     status = request.form.get("transit_status")
     delay_reason = request.form.get("delay_reason") or "None"
@@ -161,10 +143,8 @@ def update_delivery():
 
 @app.route("/api/query", methods=["POST"])
 def process_query():
-    """Process user queries through the Groq AI agent with full error logging."""
     data = request.get_json() or {}
     history = data.get("history", [])
-    
     if not history:
         return jsonify({"status": "error", "response": "Empty message history."}), 400
 

@@ -77,8 +77,8 @@ def run_agent_workflow_with_logs(history, api_key):
     from app import app
     logs = []
 
-    # Active verified Groq model ID
-    ACTIVE_MODEL = "llama3-8b-8192"
+    # Active production Groq model for function calling & speed
+    ACTIVE_MODEL = "llama-3.1-8b-instant"
 
     with app.app_context():
         client = Groq(api_key=api_key)
