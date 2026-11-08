@@ -1,11 +1,12 @@
 import os
 import sys
+import traceback
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Add project root to path for internal imports
+# Add project root directory to path for internal module imports
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from extensions import db
@@ -24,11 +25,11 @@ if db_url:
     elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     
-    # Enforce SSL connection mode for cloud PostgreSQL
+    # Enforce SSL mode for Render cloud database connection
     if "?" not in db_url:
         db_url += "?sslmode=require"
 else:
-    # Local SQLite fallback
+    # Local SQLite fallback if environment variable is not set
     db_url = "sqlite:///nexus.db"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
@@ -37,33 +38,38 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Initialize SQLAlchemy extension instance with Flask app
 db.init_app(app)
 
-# Ensure database tables exist in PostgreSQL
+# Ensure database tables exist in PostgreSQL upon boot
 with app.app_context():
     db.create_all()
 
-# --- WEB PORTAL ROUTES ---
+# --- WEB PORTAL DISPLAY ROUTES ---
 
 @app.route("/")
 def index():
+    """Customer Support Chat Assistant UI."""
     return render_template("index.html")
 
 @app.route("/inbox")
 def customer_inbox():
+    """Sent Mail logs view."""
     emails = SentEmail.query.order_by(SentEmail.sent_at.desc()).all()
     return render_template("inbox.html", emails=emails)
 
 @app.route("/warehouse")
 def warehouse_portal():
+    """Warehouse Stock & Handoff Management view."""
     items = WarehouseStock.query.order_by(WarehouseStock.order_id.desc()).all()
     return render_template("warehouse.html", items=items)
 
 @app.route("/delivery")
 def delivery_portal():
+    """Delivery Partner Tracking view."""
     shipments = DeliveryStatus.query.order_by(DeliveryStatus.order_id.desc()).all()
     return render_template("delivery.html", shipments=shipments)
 
 @app.route("/admin")
 def admin_dashboard():
+    """Admin Support Ticket Queue view."""
     tickets = SupportTicket.query.order_by(SupportTicket.created_at.desc()).all()
     metrics = {
         "total": SupportTicket.query.count(),
@@ -111,9 +117,9 @@ def add_warehouse_item():
 
 @app.route("/warehouse/handoff/<order_id>", methods=["POST"])
 def handoff_to_courier(order_id):
-    """Update item status and guarantee DeliveryStatus row exists in PostgreSQL."""
-    item = WarehouseStock.query.get(order_id)
-    shipment = DeliveryStatus.query.get(order_id)
+    """Update item status and guarantee DeliveryStatus row exists in PostgreSQL using SQLAlchemy 2.0 syntax."""
+    item = db.session.get(WarehouseStock, order_id)
+    shipment = db.session.get(DeliveryStatus, order_id)
 
     if item:
         item.dispatch_status = "Handed Over to Courier"
@@ -138,12 +144,12 @@ def handoff_to_courier(order_id):
 
 @app.route("/delivery/update", methods=["POST"])
 def update_delivery():
-    """Update last-mile delivery tracking details from Delivery Partner App."""
+    """Update last-mile delivery tracking details from Delivery Partner App using SQLAlchemy 2.0 syntax."""
     order_id = request.form.get("order_id")
     status = request.form.get("transit_status")
     delay_reason = request.form.get("delay_reason") or "None"
 
-    shipment = DeliveryStatus.query.get(order_id)
+    shipment = db.session.get(DeliveryStatus, order_id)
     if shipment:
         shipment.transit_status = status
         shipment.delay_reason = delay_reason
@@ -151,23 +157,29 @@ def update_delivery():
 
     return redirect(url_for("delivery_portal"))
 
-# --- AI AGENT ENDPOINT ---
+# --- GROQ AI AGENT ENDPOINT ---
 
 @app.route("/api/query", methods=["POST"])
 def process_query():
-    data = request.get_json()
+    """Process user queries through the Groq AI agent with full error logging."""
+    data = request.get_json() or {}
     history = data.get("history", [])
+    
     if not history:
         return jsonify({"status": "error", "response": "Empty message history."}), 400
 
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
+        print("\n[ERROR] GROQ_API_KEY environment variable missing in .env file!")
         return jsonify({"status": "error", "response": "GROQ_API_KEY environment variable missing."}), 500
 
     try:
         agent_response, execution_logs = run_agent_workflow_with_logs(history, api_key)
         return jsonify({"status": "success", "response": agent_response, "logs": execution_logs})
     except Exception as e:
+        print("\n--- API QUERY EXCEPTION DETECTED ---")
+        traceback.print_exc()
+        print("------------------------------------\n")
         return jsonify({"status": "error", "response": f"Server Error: {str(e)}", "logs": []}), 500
 
 if __name__ == "__main__":

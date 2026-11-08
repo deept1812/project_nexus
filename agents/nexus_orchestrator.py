@@ -7,12 +7,13 @@ from models import SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
 def execute_tool_call(tool_name, tool_args):
     """
     Executes database reads and writes dynamically based on the AI agent's tool decisions.
+    Uses SQLAlchemy 2.0 compliant db.session.get() methods.
     """
     try:
         if tool_name == "get_order_status":
             order_id = tool_args.get("order_id")
-            stock = WarehouseStock.query.get(order_id)
-            delivery = DeliveryStatus.query.get(order_id)
+            stock = db.session.get(WarehouseStock, order_id)
+            delivery = db.session.get(DeliveryStatus, order_id)
             
             if not stock and not delivery:
                 return json.dumps({"status": "not_found", "message": f"No record found for order ID {order_id}"})
@@ -33,8 +34,8 @@ def execute_tool_call(tool_name, tool_args):
             new_status = tool_args.get("new_status")
             reason = tool_args.get("reason", "Updated via AI Agent")
 
-            stock = WarehouseStock.query.get(order_id)
-            delivery = DeliveryStatus.query.get(order_id)
+            stock = db.session.get(WarehouseStock, order_id)
+            delivery = db.session.get(DeliveryStatus, order_id)
 
             if stock:
                 stock.dispatch_status = new_status
@@ -71,29 +72,25 @@ def execute_tool_call(tool_name, tool_args):
 
 def run_agent_workflow_with_logs(history, api_key):
     """
-    Main orchestrator function that processes chat history, interacts with Groq LLM,
-    executes tool function calls against PostgreSQL, and returns response with logs.
+    Main orchestrator function executing Groq LLM queries and PostgreSQL tools.
     """
-    # Deferred import to prevent circular import issues with app initialization
     from app import app
-
     logs = []
 
     with app.app_context():
         client = Groq(api_key=api_key)
         logs.append("Initialized Groq client inside Flask app context.")
 
-        # Define Groq tool specifications
         tools = [
             {
                 "type": "function",
                 "function": {
                     "name": "get_order_status",
-                    "description": "Retrieve current warehouse and delivery tracking details for a specific order ID.",
+                    "description": "Retrieve current warehouse and delivery tracking details for an order ID.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "order_id": {"type": "string", "description": "The unique order identifier, e.g., ORD1001 or ORD-500"}
+                            "order_id": {"type": "string", "description": "The order ID, e.g., ORD1001 or ORD-500"}
                         },
                         "required": ["order_id"]
                     }
@@ -103,12 +100,12 @@ def run_agent_workflow_with_logs(history, api_key):
                 "type": "function",
                 "function": {
                     "name": "update_order_status",
-                    "description": "Update warehouse dispatch status or delivery transit status for an order.",
+                    "description": "Update warehouse or delivery status for an order.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "order_id": {"type": "string", "description": "The unique order identifier"},
-                            "new_status": {"type": "string", "description": "New status value (e.g. Cancelled, Delayed, In Transit, Delivered)"},
+                            "new_status": {"type": "string", "description": "New status (e.g. Cancelled, Delayed, In Transit, Delivered)"},
                             "reason": {"type": "string", "description": "Reason for status change"}
                         },
                         "required": ["order_id", "new_status"]
@@ -119,13 +116,13 @@ def run_agent_workflow_with_logs(history, api_key):
                 "type": "function",
                 "function": {
                     "name": "create_support_ticket",
-                    "description": "Escalate a customer complaint or unresolved issue by opening a new support ticket.",
+                    "description": "Create a support ticket for a customer complaint.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "order_id": {"type": "string", "description": "The related order ID if applicable"},
-                            "issue_description": {"type": "string", "description": "Detailed explanation of the problem"},
-                            "priority": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"], "description": "Ticket priority level"}
+                            "order_id": {"type": "string", "description": "Related order ID"},
+                            "issue_description": {"type": "string", "description": "Description of issue"},
+                            "priority": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"], "description": "Priority level"}
                         },
                         "required": ["issue_description"]
                     }
@@ -133,14 +130,12 @@ def run_agent_workflow_with_logs(history, api_key):
             }
         ]
 
-        # Convert web chat history to LLM message payload
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are Nexus AI, an intelligent real-time logistics and warehouse assistant. "
-                    "Help customers and staff check order statuses, update delivery progress, cancel orders, "
-                    "or escalate issues to support tickets. Always maintain a professional, helpful tone."
+                    "You are Nexus AI, a logistics and warehouse support assistant. "
+                    "Help users check order status, update delivery progress, cancel orders, or log support tickets."
                 )
             }
         ]
@@ -152,9 +147,6 @@ def run_agent_workflow_with_logs(history, api_key):
             if text:
                 messages.append({"role": role, "content": text})
 
-        logs.append(f"Prepared payload with {len(messages)} context messages.")
-
-        # First LLM execution call
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
@@ -165,18 +157,12 @@ def run_agent_workflow_with_logs(history, api_key):
         response_message = response.choices[0].message
         tool_calls = response_message.tool_calls
 
-        # Handle tool execution loop if LLM requested function calls
         if tool_calls:
-            logs.append(f"AI decision triggered {len(tool_calls)} tool execution(s).")
             messages.append(response_message)
-
             for tool_call in tool_calls:
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments)
-
-                logs.append(f"Executing tool '{function_name}' with arguments: {function_args}")
                 tool_output = execute_tool_call(function_name, function_args)
-                logs.append(f"Tool output: {tool_output}")
 
                 messages.append({
                     "tool_call_id": tool_call.id,
@@ -185,15 +171,10 @@ def run_agent_workflow_with_logs(history, api_key):
                     "content": tool_output
                 })
 
-            # Second LLM call to synthesize final user-facing answer after tool execution
             final_response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=messages
             )
-            final_reply = final_response.choices[0].message.content
-            logs.append("Synthesized final response post-tool execution.")
-            return final_reply, logs
+            return final_response.choices[0].message.content, logs
 
-        # Standard conversational response if no tool call was required
-        logs.append("Generative answer returned without database mutation.")
         return response_message.content, logs
