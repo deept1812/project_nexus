@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Add project root to path for internal imports
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from extensions import db
@@ -18,46 +17,24 @@ app = Flask(__name__)
 db_url = os.getenv("DATABASE_URL")
 
 if db_url:
-    # Handle Render PostgreSQL URI dialect requirements
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     
-    # Enforce SSL connection mode for cloud PostgreSQL
     if "?" not in db_url:
         db_url += "?sslmode=require"
 else:
-    # Local SQLite fallback
     db_url = "sqlite:///nexus.db"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Initialize SQLAlchemy extension instance with Flask app
 db.init_app(app)
 
-# Initialize database tables and seed test data automatically on boot
+# Ensure database tables exist in PostgreSQL without populating hardcoded data
 with app.app_context():
     db.create_all()
-    
-    # Seed sample delivery status records if table is empty
-    if not DeliveryStatus.query.first():
-        db.session.bulk_save_objects([
-            DeliveryStatus(order_id="ORD1001", carrier="FedEx", transit_status="In Transit", delay_reason="None", estimated_delivery="2026-11-08"),
-            DeliveryStatus(order_id="ORD1002", carrier="DHL", transit_status="Delayed", delay_reason="Severe Weather", estimated_delivery="2026-11-10"),
-            DeliveryStatus(order_id="ORD1003", carrier="BlueDart", transit_status="Out for Delivery", delay_reason="None", estimated_delivery="2026-11-07")
-        ])
-        db.session.commit()
-
-    # Seed sample warehouse inventory records if table is empty
-    if not WarehouseStock.query.first():
-        db.session.bulk_save_objects([
-            WarehouseStock(order_id="ORD1001", item_name="Logistics Controller Unit", dispatch_status="Dispatched", hub_location="Mumbai Hub A"),
-            WarehouseStock(order_id="ORD1002", item_name="Sensors Pack x10", dispatch_status="Processing", hub_location="Bengaluru Hub C"),
-            WarehouseStock(order_id="ORD1003", item_name="Industrial Router", dispatch_status="Ready for Pickup", hub_location="Delhi Hub B")
-        ])
-        db.session.commit()
 
 # --- WEB PORTAL ROUTES ---
 
@@ -91,11 +68,11 @@ def admin_dashboard():
     }
     return render_template("admin.html", tickets=tickets, metrics=metrics)
 
-# --- WAREHOUSE & LOGISTICS REAL-TIME MUTATION ROUTES ---
+# --- REAL-TIME DATABASE MUTATION ROUTES ---
 
 @app.route("/warehouse/add", methods=["POST"])
 def add_warehouse_item():
-    """Form / API POST route to scan and insert new items into PostgreSQL in real time."""
+    """Form / API POST route to insert new items directly into PostgreSQL."""
     order_id = request.form.get("order_id") or request.json.get("order_id")
     item_name = request.form.get("item_name") or request.json.get("item_name")
     hub_location = request.form.get("hub_location") or request.json.get("hub_location")
@@ -103,7 +80,7 @@ def add_warehouse_item():
     if not order_id or not item_name:
         return jsonify({"status": "error", "message": "Order ID and Item Name required"}), 400
 
-    # Add or update Warehouse Table entry
+    # Insert into WarehouseStock table
     new_item = WarehouseStock(
         order_id=order_id,
         item_name=item_name,
@@ -111,7 +88,7 @@ def add_warehouse_item():
         hub_location=hub_location or "Main Warehouse"
     )
     
-    # Initialize parallel Delivery Status tracking record
+    # Initialize parallel DeliveryStatus record
     new_shipment = DeliveryStatus(
         order_id=order_id,
         carrier="Pending Carrier",
@@ -129,7 +106,7 @@ def add_warehouse_item():
 
 @app.route("/warehouse/handoff/<order_id>", methods=["POST"])
 def handoff_to_courier(order_id):
-    """Update item status to indicate courier handoff across warehouse and delivery systems."""
+    """Update item status to indicate courier handoff across database tables."""
     item = WarehouseStock.query.get(order_id)
     shipment = DeliveryStatus.query.get(order_id)
 
@@ -141,7 +118,7 @@ def handoff_to_courier(order_id):
     db.session.commit()
     return redirect(url_for("warehouse_portal"))
 
-# --- AI API ENDPOINT ---
+# --- AI AGENT ENDPOINT ---
 
 @app.route("/api/query", methods=["POST"])
 def process_query():
