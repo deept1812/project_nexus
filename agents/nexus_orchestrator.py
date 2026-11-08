@@ -72,20 +72,19 @@ def execute_tool_call(tool_name, tool_args):
 
 def run_agent_workflow_with_logs(history, api_key):
     """
-    Main orchestrator function executing Groq LLM queries and PostgreSQL tools.
+    Main orchestrator function executing LLM queries and PostgreSQL tools.
     """
     from app import app
     logs = []
 
-    # Active recommended Groq production model for tool calling
-    ACTIVE_MODEL = "llama-3.1-8b-instant"
+    # Target model configuration
+    ACTIVE_MODEL = "openai/gpt-oss-20b"
 
-    # Clean API Key to eliminate trailing spaces/newlines
     clean_api_key = api_key.strip() if api_key else ""
 
     with app.app_context():
         client = Groq(api_key=clean_api_key)
-        logs.append("Initialized Groq client inside Flask app context.")
+        logs.append(f"Initialized LLM client for model {ACTIVE_MODEL}.")
 
         tools = [
             {

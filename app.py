@@ -4,7 +4,7 @@ import traceback
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from dotenv import load_dotenv
 
-# Force environment variable override from .env
+# Force environment variable reloading
 load_dotenv(override=True)
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -140,7 +140,7 @@ def update_delivery():
 
     return redirect(url_for("delivery_portal"))
 
-# --- GROQ AI AGENT ENDPOINT ---
+# --- AI AGENT ENDPOINT ---
 
 @app.route("/api/query", methods=["POST"])
 def process_query():
