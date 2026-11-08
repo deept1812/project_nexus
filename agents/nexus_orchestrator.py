@@ -7,7 +7,8 @@ from models import SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
 
 def execute_tool_call(tool_name, tool_args):
     """
-    Executes database reads and secure, role-restricted writes based on AI agent decisions.
+    Executes strictly safe database reads and customer-level requests.
+    Direct status mutation tools have been completely removed.
     """
     try:
         if tool_name == "get_order_status":
@@ -52,7 +53,7 @@ def execute_tool_call(tool_name, tool_args):
             if not stock:
                 return json.dumps({"status": "error", "message": f"Order {raw_order_id} not found."})
 
-            # SECURE VALIDATION: Allow cancellation ONLY if item is still in warehouse processing state
+            # Allow cancellation ONLY if item is still processing in warehouse
             unshipped_statuses = ["Processing", "In Warehouse", "Pending"]
             if stock.dispatch_status in unshipped_statuses:
                 stock.dispatch_status = "Cancelled"
@@ -63,10 +64,10 @@ def execute_tool_call(tool_name, tool_args):
                 db.session.commit()
                 return json.dumps({"status": "success", "message": f"Order {stock.order_id} has been successfully cancelled."})
             else:
-                # DENY DIRECT MUTATION: Order already shipped/delivered. Log a ticket instead.
+                # DENY MUTATION: Create a support ticket for manual review
                 ticket = SupportTicket(
                     order_id=stock.order_id,
-                    issue_description=f"Cancellation request denied (Order already '{stock.dispatch_status}'). Reason: {reason}",
+                    issue_description=f"Cancellation request denied (Order is '{stock.dispatch_status}'). Reason: {reason}",
                     priority="HIGH",
                     status="OPEN"
                 )
@@ -74,7 +75,7 @@ def execute_tool_call(tool_name, tool_args):
                 db.session.commit()
                 return json.dumps({
                     "status": "denied",
-                    "message": f"Cannot cancel order {stock.order_id} directly because its current status is '{stock.dispatch_status}'. A support ticket (ID: {ticket.id}) has been created for manual review."
+                    "message": f"Cannot cancel order {stock.order_id} directly because it is already '{stock.dispatch_status}'. A support ticket (ID: {ticket.id}) was opened."
                 })
 
         elif tool_name == "create_support_ticket":
@@ -94,7 +95,7 @@ def execute_tool_call(tool_name, tool_args):
             return json.dumps({"status": "success", "ticket_id": ticket.id, "message": "Support ticket generated successfully."})
 
         else:
-            return json.dumps({"status": "error", "message": f"Unauthorized or unknown tool: {tool_name}"})
+            return json.dumps({"status": "error", "message": f"Unauthorized tool request: {tool_name}"})
 
     except Exception as e:
         db.session.rollback()
@@ -103,7 +104,7 @@ def execute_tool_call(tool_name, tool_args):
 
 def run_agent_workflow_with_logs(history, api_key):
     """
-    Customer Assistant Agent Workflow with strict tool boundaries.
+    Main orchestrator function executing customer queries with strict tool permissions.
     """
     from app import app
     logs = []
@@ -115,17 +116,17 @@ def run_agent_workflow_with_logs(history, api_key):
         client = Groq(api_key=clean_api_key)
         logs.append(f"Initialized LLM client for model {ACTIVE_MODEL}.")
 
-        # CUSTOMER-FACING TOOLS ONLY (NO DIRECT IN-TRANSIT / DELIVERED MUTATION TOOLS)
+        # ONLY PERMIT SAFE READS, CANCELLATION REQUESTS, AND SUPPORT TICKETS
         tools = [
             {
                 "type": "function",
                 "function": {
                     "name": "get_order_status",
-                    "description": "Retrieve current warehouse and delivery status for an order ID.",
+                    "description": "Retrieve current status and tracking details for an order ID.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "order_id": {"type": "string", "description": "The order ID, e.g., ORD1001 or ORD-500"}
+                            "order_id": {"type": "string", "description": "The order ID, e.g., ORD1001 or ORD-105"}
                         },
                         "required": ["order_id"]
                     }
@@ -135,12 +136,12 @@ def run_agent_workflow_with_logs(history, api_key):
                 "type": "function",
                 "function": {
                     "name": "request_order_cancellation",
-                    "description": "Request cancellation for an order. Will only succeed if order has not been dispatched.",
+                    "description": "Request order cancellation. Only works if item is unshipped.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "order_id": {"type": "string", "description": "The unique order identifier"},
-                            "reason": {"type": "string", "description": "Reason for cancellation request"}
+                            "order_id": {"type": "string", "description": "The order ID"},
+                            "reason": {"type": "string", "description": "Reason for cancellation"}
                         },
                         "required": ["order_id"]
                     }
@@ -150,12 +151,12 @@ def run_agent_workflow_with_logs(history, api_key):
                 "type": "function",
                 "function": {
                     "name": "create_support_ticket",
-                    "description": "Create a support ticket for complaints, address change requests, or unresolved issues.",
+                    "description": "Create a support ticket for status change requests, address updates, or complaints.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "order_id": {"type": "string", "description": "Related order ID"},
-                            "issue_description": {"type": "string", "description": "Detailed description of the issue"},
+                            "issue_description": {"type": "string", "description": "Description of the request"},
                             "priority": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"], "description": "Priority level"}
                         },
                         "required": ["issue_description"]
@@ -169,9 +170,10 @@ def run_agent_workflow_with_logs(history, api_key):
                 "role": "system",
                 "content": (
                     "You are Nexus AI, a real-time logistics customer support assistant. "
-                    "You CAN: Check order statuses, request cancellations for unshipped orders, and open support tickets. "
-                    "You CANNOT: Mark orders as 'Delivered', 'In Transit', or change internal hub logistics directly. "
-                    "If a user asks to change delivery address or mark an order as delivered/in transit, open a support ticket for them."
+                    "You CAN: Check order statuses, cancel unshipped orders, and open support tickets. "
+                    "You CANNOT: Directly change order statuses to 'In Transit', 'Dispatched', or 'Delivered'. "
+                    "If a user asks to change the order status to In Transit or Delivered, immediately use 'create_support_ticket' "
+                    "to log a high-priority ticket for staff to handle."
                 )
             }
         ]
