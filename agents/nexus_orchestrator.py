@@ -77,11 +77,14 @@ def run_agent_workflow_with_logs(history, api_key):
     from app import app
     logs = []
 
-    # Active production Groq model for function calling & speed
+    # Active recommended Groq production model for tool calling
     ACTIVE_MODEL = "llama-3.1-8b-instant"
 
+    # Clean API Key to eliminate trailing spaces/newlines
+    clean_api_key = api_key.strip() if api_key else ""
+
     with app.app_context():
-        client = Groq(api_key=api_key)
+        client = Groq(api_key=clean_api_key)
         logs.append("Initialized Groq client inside Flask app context.")
 
         tools = [

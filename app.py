@@ -4,7 +4,8 @@ import traceback
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from dotenv import load_dotenv
 
-load_dotenv()
+# Force environment variable override from .env
+load_dotenv(override=True)
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
