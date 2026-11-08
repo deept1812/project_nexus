@@ -77,6 +77,9 @@ def run_agent_workflow_with_logs(history, api_key):
     from app import app
     logs = []
 
+    # Active supported Groq model
+    ACTIVE_MODEL = "llama3-70b-8192"
+
     with app.app_context():
         client = Groq(api_key=api_key)
         logs.append("Initialized Groq client inside Flask app context.")
@@ -134,7 +137,7 @@ def run_agent_workflow_with_logs(history, api_key):
             {
                 "role": "system",
                 "content": (
-                    "You are Nexus AI, a logistics and warehouse support assistant. "
+                    "You are Nexus AI, a real-time logistics and warehouse support assistant. "
                     "Help users check order status, update delivery progress, cancel orders, or log support tickets."
                 )
             }
@@ -148,7 +151,7 @@ def run_agent_workflow_with_logs(history, api_key):
                 messages.append({"role": role, "content": text})
 
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=ACTIVE_MODEL,
             messages=messages,
             tools=tools,
             tool_choice="auto"
@@ -172,7 +175,7 @@ def run_agent_workflow_with_logs(history, api_key):
                 })
 
             final_response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=ACTIVE_MODEL,
                 messages=messages
             )
             return final_response.choices[0].message.content, logs
