@@ -7,17 +7,13 @@ from models import SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
 
 def execute_tool_call(tool_name, tool_args):
     """
-    Executes database reads and writes dynamically based on the AI agent's tool decisions.
-    Supports case-insensitive and flexible order ID matching.
+    Executes database reads and secure, role-restricted writes based on AI agent decisions.
     """
     try:
         if tool_name == "get_order_status":
             raw_order_id = tool_args.get("order_id", "").strip()
-            
-            # Normalize variations (e.g. ord1003 -> ORD1003, ORD-1003 -> ORD1003)
             clean_id = raw_order_id.upper().replace("-", "")
 
-            # Flexible case-insensitive lookup matching either exact ID or normalized ID
             stock = WarehouseStock.query.filter(
                 func.upper(func.replace(WarehouseStock.order_id, '-', '')) == clean_id
             ).first()
@@ -40,11 +36,9 @@ def execute_tool_call(tool_name, tool_args):
                 "estimated_delivery": delivery.estimated_delivery if delivery else "TBD"
             })
 
-        elif tool_name == "update_order_status":
+        elif tool_name == "request_order_cancellation":
             raw_order_id = tool_args.get("order_id", "").strip()
-            new_status = tool_args.get("new_status")
-            reason = tool_args.get("reason", "Updated via AI Agent")
-
+            reason = tool_args.get("reason", "Customer requested cancellation via Chatbot")
             clean_id = raw_order_id.upper().replace("-", "")
 
             stock = WarehouseStock.query.filter(
@@ -55,14 +49,33 @@ def execute_tool_call(tool_name, tool_args):
                 func.upper(func.replace(DeliveryStatus.order_id, '-', '')) == clean_id
             ).first()
 
-            if stock:
-                stock.dispatch_status = new_status
-            if delivery:
-                delivery.transit_status = new_status
-                delivery.delay_reason = reason
+            if not stock:
+                return json.dumps({"status": "error", "message": f"Order {raw_order_id} not found."})
 
-            db.session.commit()
-            return json.dumps({"status": "success", "message": f"Order {raw_order_id} updated to {new_status} in PostgreSQL."})
+            # SECURE VALIDATION: Allow cancellation ONLY if item is still in warehouse processing state
+            unshipped_statuses = ["Processing", "In Warehouse", "Pending"]
+            if stock.dispatch_status in unshipped_statuses:
+                stock.dispatch_status = "Cancelled"
+                if delivery:
+                    delivery.transit_status = "Cancelled"
+                    delivery.delay_reason = reason
+                
+                db.session.commit()
+                return json.dumps({"status": "success", "message": f"Order {stock.order_id} has been successfully cancelled."})
+            else:
+                # DENY DIRECT MUTATION: Order already shipped/delivered. Log a ticket instead.
+                ticket = SupportTicket(
+                    order_id=stock.order_id,
+                    issue_description=f"Cancellation request denied (Order already '{stock.dispatch_status}'). Reason: {reason}",
+                    priority="HIGH",
+                    status="OPEN"
+                )
+                db.session.add(ticket)
+                db.session.commit()
+                return json.dumps({
+                    "status": "denied",
+                    "message": f"Cannot cancel order {stock.order_id} directly because its current status is '{stock.dispatch_status}'. A support ticket (ID: {ticket.id}) has been created for manual review."
+                })
 
         elif tool_name == "create_support_ticket":
             order_id = tool_args.get("order_id", "GENERAL")
@@ -81,7 +94,7 @@ def execute_tool_call(tool_name, tool_args):
             return json.dumps({"status": "success", "ticket_id": ticket.id, "message": "Support ticket generated successfully."})
 
         else:
-            return json.dumps({"status": "error", "message": f"Unknown tool name: {tool_name}"})
+            return json.dumps({"status": "error", "message": f"Unauthorized or unknown tool: {tool_name}"})
 
     except Exception as e:
         db.session.rollback()
@@ -90,7 +103,7 @@ def execute_tool_call(tool_name, tool_args):
 
 def run_agent_workflow_with_logs(history, api_key):
     """
-    Main orchestrator function executing LLM queries and PostgreSQL tools.
+    Customer Assistant Agent Workflow with strict tool boundaries.
     """
     from app import app
     logs = []
@@ -102,12 +115,13 @@ def run_agent_workflow_with_logs(history, api_key):
         client = Groq(api_key=clean_api_key)
         logs.append(f"Initialized LLM client for model {ACTIVE_MODEL}.")
 
+        # CUSTOMER-FACING TOOLS ONLY (NO DIRECT IN-TRANSIT / DELIVERED MUTATION TOOLS)
         tools = [
             {
                 "type": "function",
                 "function": {
                     "name": "get_order_status",
-                    "description": "Retrieve current warehouse and delivery tracking details for an order ID.",
+                    "description": "Retrieve current warehouse and delivery status for an order ID.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -120,16 +134,15 @@ def run_agent_workflow_with_logs(history, api_key):
             {
                 "type": "function",
                 "function": {
-                    "name": "update_order_status",
-                    "description": "Update warehouse or delivery status for an order.",
+                    "name": "request_order_cancellation",
+                    "description": "Request cancellation for an order. Will only succeed if order has not been dispatched.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "order_id": {"type": "string", "description": "The unique order identifier"},
-                            "new_status": {"type": "string", "description": "New status (e.g. Cancelled, Delayed, In Transit, Delivered)"},
-                            "reason": {"type": "string", "description": "Reason for status change"}
+                            "reason": {"type": "string", "description": "Reason for cancellation request"}
                         },
-                        "required": ["order_id", "new_status"]
+                        "required": ["order_id"]
                     }
                 }
             },
@@ -137,12 +150,12 @@ def run_agent_workflow_with_logs(history, api_key):
                 "type": "function",
                 "function": {
                     "name": "create_support_ticket",
-                    "description": "Create a support ticket for a customer complaint.",
+                    "description": "Create a support ticket for complaints, address change requests, or unresolved issues.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "order_id": {"type": "string", "description": "Related order ID"},
-                            "issue_description": {"type": "string", "description": "Description of issue"},
+                            "issue_description": {"type": "string", "description": "Detailed description of the issue"},
                             "priority": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"], "description": "Priority level"}
                         },
                         "required": ["issue_description"]
@@ -155,8 +168,10 @@ def run_agent_workflow_with_logs(history, api_key):
             {
                 "role": "system",
                 "content": (
-                    "You are Nexus AI, a real-time logistics and warehouse support assistant. "
-                    "Help users check order status, update delivery progress, cancel orders, or log support tickets."
+                    "You are Nexus AI, a real-time logistics customer support assistant. "
+                    "You CAN: Check order statuses, request cancellations for unshipped orders, and open support tickets. "
+                    "You CANNOT: Mark orders as 'Delivered', 'In Transit', or change internal hub logistics directly. "
+                    "If a user asks to change delivery address or mark an order as delivered/in transit, open a support ticket for them."
                 )
             }
         ]
