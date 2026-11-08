@@ -1,25 +1,36 @@
 import os
 import json
 from groq import Groq
+from sqlalchemy import func
 from extensions import db
 from models import SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
 
 def execute_tool_call(tool_name, tool_args):
     """
     Executes database reads and writes dynamically based on the AI agent's tool decisions.
-    Uses SQLAlchemy 2.0 compliant db.session.get() methods.
+    Supports case-insensitive and flexible order ID matching.
     """
     try:
         if tool_name == "get_order_status":
-            order_id = tool_args.get("order_id")
-            stock = db.session.get(WarehouseStock, order_id)
-            delivery = db.session.get(DeliveryStatus, order_id)
+            raw_order_id = tool_args.get("order_id", "").strip()
+            
+            # Normalize variations (e.g. ord1003 -> ORD1003, ORD-1003 -> ORD1003)
+            clean_id = raw_order_id.upper().replace("-", "")
+
+            # Flexible case-insensitive lookup matching either exact ID or normalized ID
+            stock = WarehouseStock.query.filter(
+                func.upper(func.replace(WarehouseStock.order_id, '-', '')) == clean_id
+            ).first()
+
+            delivery = DeliveryStatus.query.filter(
+                func.upper(func.replace(DeliveryStatus.order_id, '-', '')) == clean_id
+            ).first()
             
             if not stock and not delivery:
-                return json.dumps({"status": "not_found", "message": f"No record found for order ID {order_id}"})
+                return json.dumps({"status": "not_found", "message": f"No record found for order ID {raw_order_id}"})
             
             return json.dumps({
-                "order_id": order_id,
+                "order_id": stock.order_id if stock else (delivery.order_id if delivery else raw_order_id),
                 "item_name": stock.item_name if stock else "N/A",
                 "dispatch_status": stock.dispatch_status if stock else "N/A",
                 "hub_location": stock.hub_location if stock else "N/A",
@@ -30,12 +41,19 @@ def execute_tool_call(tool_name, tool_args):
             })
 
         elif tool_name == "update_order_status":
-            order_id = tool_args.get("order_id")
+            raw_order_id = tool_args.get("order_id", "").strip()
             new_status = tool_args.get("new_status")
             reason = tool_args.get("reason", "Updated via AI Agent")
 
-            stock = db.session.get(WarehouseStock, order_id)
-            delivery = db.session.get(DeliveryStatus, order_id)
+            clean_id = raw_order_id.upper().replace("-", "")
+
+            stock = WarehouseStock.query.filter(
+                func.upper(func.replace(WarehouseStock.order_id, '-', '')) == clean_id
+            ).first()
+
+            delivery = DeliveryStatus.query.filter(
+                func.upper(func.replace(DeliveryStatus.order_id, '-', '')) == clean_id
+            ).first()
 
             if stock:
                 stock.dispatch_status = new_status
@@ -44,7 +62,7 @@ def execute_tool_call(tool_name, tool_args):
                 delivery.delay_reason = reason
 
             db.session.commit()
-            return json.dumps({"status": "success", "message": f"Order {order_id} updated to {new_status} in PostgreSQL."})
+            return json.dumps({"status": "success", "message": f"Order {raw_order_id} updated to {new_status} in PostgreSQL."})
 
         elif tool_name == "create_support_ticket":
             order_id = tool_args.get("order_id", "GENERAL")
@@ -77,9 +95,7 @@ def run_agent_workflow_with_logs(history, api_key):
     from app import app
     logs = []
 
-    # Target model configuration
     ACTIVE_MODEL = "openai/gpt-oss-20b"
-
     clean_api_key = api_key.strip() if api_key else ""
 
     with app.app_context():
