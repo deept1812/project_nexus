@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Add project root to path for internal imports
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from extensions import db
@@ -17,22 +18,26 @@ app = Flask(__name__)
 db_url = os.getenv("DATABASE_URL")
 
 if db_url:
+    # Handle Render PostgreSQL URI dialect requirements
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     
+    # Enforce SSL connection mode for cloud PostgreSQL
     if "?" not in db_url:
         db_url += "?sslmode=require"
 else:
+    # Local SQLite fallback
     db_url = "sqlite:///nexus.db"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Initialize SQLAlchemy extension instance with Flask app
 db.init_app(app)
 
-# Ensure database tables exist in PostgreSQL without populating hardcoded data
+# Ensure database tables exist in PostgreSQL
 with app.app_context():
     db.create_all()
 
@@ -106,17 +111,45 @@ def add_warehouse_item():
 
 @app.route("/warehouse/handoff/<order_id>", methods=["POST"])
 def handoff_to_courier(order_id):
-    """Update item status to indicate courier handoff across database tables."""
+    """Update item status and guarantee DeliveryStatus row exists in PostgreSQL."""
     item = WarehouseStock.query.get(order_id)
     shipment = DeliveryStatus.query.get(order_id)
 
     if item:
         item.dispatch_status = "Handed Over to Courier"
+    
     if shipment:
         shipment.transit_status = "In Transit"
+        if shipment.carrier == "Pending Carrier":
+            shipment.carrier = "FedEx Express"
+    else:
+        new_shipment = DeliveryStatus(
+            order_id=order_id,
+            carrier="FedEx Express",
+            transit_status="In Transit",
+            delay_reason="None",
+            estimated_delivery="Within 3 Days"
+        )
+        db.session.add(new_shipment)
 
     db.session.commit()
     return redirect(url_for("warehouse_portal"))
+
+
+@app.route("/delivery/update", methods=["POST"])
+def update_delivery():
+    """Update last-mile delivery tracking details from Delivery Partner App."""
+    order_id = request.form.get("order_id")
+    status = request.form.get("transit_status")
+    delay_reason = request.form.get("delay_reason") or "None"
+
+    shipment = DeliveryStatus.query.get(order_id)
+    if shipment:
+        shipment.transit_status = status
+        shipment.delay_reason = delay_reason
+        db.session.commit()
+
+    return redirect(url_for("delivery_portal"))
 
 # --- AI AGENT ENDPOINT ---
 
