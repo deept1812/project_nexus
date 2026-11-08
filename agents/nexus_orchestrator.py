@@ -77,8 +77,8 @@ def run_agent_workflow_with_logs(history, api_key):
     from app import app
     logs = []
 
-    # Active supported Groq model
-    ACTIVE_MODEL = "llama3-70b-8192"
+    # Active supported Groq model for function calling & speed
+    ACTIVE_MODEL = "llama-3.1-8b-instant"
 
     with app.app_context():
         client = Groq(api_key=api_key)
@@ -150,6 +150,7 @@ def run_agent_workflow_with_logs(history, api_key):
             if text:
                 messages.append({"role": role, "content": text})
 
+        # Initial API Request to Groq
         response = client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages,
@@ -160,6 +161,7 @@ def run_agent_workflow_with_logs(history, api_key):
         response_message = response.choices[0].message
         tool_calls = response_message.tool_calls
 
+        # If Groq decides to execute database tools
         if tool_calls:
             messages.append(response_message)
             for tool_call in tool_calls:
@@ -174,6 +176,7 @@ def run_agent_workflow_with_logs(history, api_key):
                     "content": tool_output
                 })
 
+            # Secondary request to synthesize final reply
             final_response = client.chat.completions.create(
                 model=ACTIVE_MODEL,
                 messages=messages
