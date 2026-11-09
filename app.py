@@ -39,6 +39,11 @@ with app.app_context():
 
 # --- AUTHENTICATION & LOGIN ROUTES ---
 
+@app.route("/")
+def home():
+    """Default landing page opens the Portal Authentication view."""
+    return render_template("login.html")
+
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
     if request.method == "POST":
@@ -49,20 +54,19 @@ def login_page():
             email = request.form.get("email", "").strip().lower()
             otp = request.form.get("otp", "").strip()
             
-            # Simple demo OTP check (allows 1234 or any 4-digit code)
             if email and (otp == "1234" or len(otp) == 4):
                 session["user_role"] = "customer"
                 session["user_email"] = email
-                return redirect(url_for("index"))
+                return redirect(url_for("customer_app"))
             else:
-                return render_template("login.html", error="Invalid OTP Code. Use 1234.")
+                return render_template("login.html", error="Invalid OTP Code. Use 1234 for testing.")
 
-        # 2. Staff Password Verification
+        # 2. Staff Password Verification (Admin, Warehouse, Delivery)
         elif role in ["warehouse", "delivery", "admin"]:
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "").strip()
 
-            # Staff Default Credentials
+            # Default Staff Credentials
             credentials = {
                 "admin": "admin123",
                 "warehouse1": "wh123",
@@ -89,10 +93,10 @@ def logout():
     session.clear()
     return redirect(url_for("login_page"))
 
-# --- WEB PORTAL ROUTES ---
+# --- WEB PORTAL DISPLAY ROUTES ---
 
-@app.route("/")
-def index():
+@app.route("/customer")
+def customer_app():
     return render_template("index.html")
 
 @app.route("/inbox")
@@ -121,7 +125,7 @@ def admin_dashboard():
     }
     return render_template("admin.html", tickets=tickets, metrics=metrics)
 
-# --- POSTGRESQL MUTATION ROUTES ---
+# --- REAL-TIME POSTGRESQL MUTATION ROUTES ---
 
 @app.route("/warehouse/add", methods=["POST"])
 def add_warehouse_item():
@@ -214,7 +218,7 @@ def resolve_ticket(ticket_id):
         db.session.commit()
     return redirect(url_for("admin_dashboard"))
 
-# --- GROQ AI AGENT ENDPOINT ---
+# --- AI AGENT ENDPOINT ---
 
 @app.route("/api/query", methods=["POST"])
 def process_query():

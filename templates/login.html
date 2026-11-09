@@ -9,10 +9,9 @@
         body, html { height: 100%; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .login-container { display: flex; height: 100vh; }
         
-        /* Left Hero Banner */
         .hero-section {
             flex: 1;
-            background: linear-gradient(rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.8)), url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1350&q=80') center/cover no-repeat;
+            background: linear-gradient(rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.85)), url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1350&q=80') center/cover no-repeat;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -20,7 +19,6 @@
             color: white;
         }
 
-        /* Right Authentication Sidebar */
         .auth-section {
             width: 480px;
             background: #ffffff;
@@ -32,9 +30,8 @@
             overflow-y: auto;
         }
 
-        /* Linways Style Block Selector */
         .portal-block {
-            border: 1px solid #e2e8f0;
+            border: 1.5px solid #e2e8f0;
             border-radius: 8px;
             padding: 1.25rem 1.5rem;
             margin-bottom: 1rem;
@@ -49,7 +46,7 @@
             border-color: #2563eb;
             background-color: #f8fafc;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
         }
 
         .portal-title {
@@ -75,13 +72,11 @@
 <body>
 
 <div class="login-container">
-    <!-- Left Hero Banner -->
     <div class="hero-section">
         <h1 class="display-4 fw-bold">PROJECT NEXUS</h1>
         <p class="lead">Autonomous Real-Time Logistics & Supply Chain Intelligence</p>
     </div>
 
-    <!-- Right Login Options -->
     <div class="auth-section">
         <div class="text-center mb-4">
             <h4 class="fw-bold text-dark">Portal Authentication</h4>
@@ -92,7 +87,6 @@
             <div class="alert alert-danger py-2 small">{{ error }}</div>
         {% endif %}
 
-        <!-- Role Selector view -->
         <div id="roleSelector">
             <div class="portal-block" onclick="showForm('customerForm', 'Customer Portal Login')">
                 <div>
@@ -127,7 +121,6 @@
             </div>
         </div>
 
-        <!-- 1. Customer OTP Form -->
         <div id="customerForm" class="d-none">
             <span class="back-btn fw-bold" onclick="showSelector()">← Back to Portals</span>
             <h5 class="fw-bold mb-3">Customer OTP Login</h5>
@@ -145,7 +138,6 @@
             </form>
         </div>
 
-        <!-- 2. Staff Forms (Warehouse, Delivery, Admin) -->
         <div id="staffForm" class="d-none">
             <span class="back-btn fw-bold" onclick="showSelector()">← Back to Portals</span>
             <h5 id="staffTitle" class="fw-bold mb-3">Staff Login</h5>
