@@ -4,7 +4,6 @@ import traceback
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from dotenv import load_dotenv
 
-# Force environment variable reloading
 load_dotenv(override=True)
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -37,7 +36,7 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
-# --- WEB PORTAL DISPLAY ROUTES ---
+# --- WEB PORTAL ROUTES ---
 
 @app.route("/")
 def index():
@@ -69,14 +68,15 @@ def admin_dashboard():
     }
     return render_template("admin.html", tickets=tickets, metrics=metrics)
 
-# --- REAL-TIME POSTGRESQL MUTATION ROUTES ---
+# --- POSTGRESQL MUTATION ROUTES WITH AUTHENTICATION FIELDS ---
 
 @app.route("/warehouse/add", methods=["POST"])
 def add_warehouse_item():
-    """Inserts a new item into WarehouseStock and syncs a tracking record in DeliveryStatus."""
     order_id = (request.form.get("order_id") or request.json.get("order_id") or "").strip()
     item_name = (request.form.get("item_name") or request.json.get("item_name") or "").strip()
     hub_location = (request.form.get("hub_location") or request.json.get("hub_location") or "Main Warehouse").strip()
+    customer_email = (request.form.get("customer_email") or request.json.get("customer_email") or "").strip().lower()
+    customer_phone = (request.form.get("customer_phone") or request.json.get("customer_phone") or "").strip()
 
     if not order_id or not item_name:
         return jsonify({"status": "error", "message": "Order ID and Item Name required"}), 400
@@ -85,7 +85,9 @@ def add_warehouse_item():
         order_id=order_id,
         item_name=item_name,
         dispatch_status="Processing",
-        hub_location=hub_location
+        hub_location=hub_location,
+        customer_email=customer_email,
+        customer_phone=customer_phone
     )
     
     new_shipment = DeliveryStatus(
@@ -93,19 +95,19 @@ def add_warehouse_item():
         carrier="Pending Carrier",
         transit_status="In Warehouse",
         delay_reason="None",
-        estimated_delivery="TBD"
+        estimated_delivery="TBD",
+        customer_email=customer_email,
+        customer_phone=customer_phone
     )
 
     db.session.merge(new_item)
     db.session.merge(new_shipment)
-    db.session.commit()  # Direct PostgreSQL write
+    db.session.commit()
 
     return redirect(url_for("warehouse_portal"))
 
-
 @app.route("/warehouse/handoff/<order_id>", methods=["POST"])
 def handoff_to_courier(order_id):
-    """Updates Warehouse dispatch status and advances Delivery transit status to In Transit in PostgreSQL."""
     order_id = order_id.strip()
     item = db.session.get(WarehouseStock, order_id)
     shipment = db.session.get(DeliveryStatus, order_id)
@@ -123,17 +125,17 @@ def handoff_to_courier(order_id):
             carrier="FedEx Express",
             transit_status="In Transit",
             delay_reason="None",
-            estimated_delivery="Within 3 Days"
+            estimated_delivery="Within 3 Days",
+            customer_email=item.customer_email if item else None,
+            customer_phone=item.customer_phone if item else None
         )
         db.session.add(new_shipment)
 
-    db.session.commit()  # Direct PostgreSQL update
+    db.session.commit()
     return redirect(url_for("warehouse_portal"))
-
 
 @app.route("/delivery/update", methods=["POST"])
 def update_delivery():
-    """Updates carrier transit status and delay reasons from Delivery Partner App directly to PostgreSQL."""
     order_id = request.form.get("order_id", "").strip()
     status = request.form.get("transit_status", "").strip()
     delay_reason = request.form.get("delay_reason", "").strip() or "None"
@@ -145,24 +147,21 @@ def update_delivery():
         shipment.transit_status = status
         shipment.delay_reason = delay_reason
 
-    # Keep WarehouseStock dispatch_status synced if order is marked Delivered or Cancelled
     if stock and status in ["Delivered", "Cancelled"]:
         stock.dispatch_status = status
 
-    db.session.commit()  # Direct PostgreSQL update
+    db.session.commit()
     return redirect(url_for("delivery_portal"))
-
 
 @app.route("/admin/resolve/<int:ticket_id>", methods=["POST"])
 def resolve_ticket(ticket_id):
-    """Updates support ticket status to RESOLVED in PostgreSQL."""
     ticket = db.session.get(SupportTicket, ticket_id)
     if ticket:
         ticket.status = "RESOLVED"
-        db.session.commit()  # Direct PostgreSQL update
+        db.session.commit()
     return redirect(url_for("admin_dashboard"))
 
-# --- AI AGENT ENDPOINT ---
+# --- GROQ AI AGENT ENDPOINT ---
 
 @app.route("/api/query", methods=["POST"])
 def process_query():
@@ -173,7 +172,7 @@ def process_query():
 
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        print("\n[ERROR] GROQ_API_KEY missing in .env file!")
+        print("\n[ERROR] GROQ_API_KEY environment variable missing in .env file!")
         return jsonify({"status": "error", "response": "GROQ_API_KEY environment variable missing."}), 500
 
     try:

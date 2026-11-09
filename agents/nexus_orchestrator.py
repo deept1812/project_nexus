@@ -1,77 +1,99 @@
 import os
 import json
 from groq import Groq
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from extensions import db
 from models import SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
 
 def execute_tool_call(tool_name, tool_args):
     """
-    Executes database reads and customer requests with safe null checks and case-insensitivity.
+    Executes identity-verified database reads and customer requests.
+    Requires customer email or phone matching before disclosing order info.
     """
     try:
         if tool_name == "get_order_status":
             raw_order_id = (tool_args.get("order_id") or "").strip()
+            auth_contact = (tool_args.get("customer_email_or_phone") or "").strip().lower()
+
             if not raw_order_id:
-                return json.dumps({"status": "error", "message": "Please provide an Order ID to check status."})
+                return json.dumps({"status": "error", "message": "Please provide your Order ID."})
+            
+            if not auth_contact:
+                return json.dumps({"status": "need_auth", "message": "Please provide your registered Email address or Phone number to verify ownership."})
 
             clean_id = raw_order_id.upper().replace("-", "")
 
-            # Flexible query across both tables
+            # Query database matching both Order ID and Email/Phone verification
             stock = WarehouseStock.query.filter(
-                func.upper(func.replace(WarehouseStock.order_id, '-', '')) == clean_id
+                func.upper(func.replace(WarehouseStock.order_id, '-', '')) == clean_id,
+                or_(
+                    func.lower(WarehouseStock.customer_email) == auth_contact,
+                    func.lower(WarehouseStock.customer_phone) == auth_contact
+                )
             ).first()
 
             delivery = DeliveryStatus.query.filter(
-                func.upper(func.replace(DeliveryStatus.order_id, '-', '')) == clean_id
+                func.upper(func.replace(DeliveryStatus.order_id, '-', '')) == clean_id,
+                or_(
+                    func.lower(DeliveryStatus.customer_email) == auth_contact,
+                    func.lower(DeliveryStatus.customer_phone) == auth_contact
+                )
             ).first()
             
             if not stock and not delivery:
-                return json.dumps({"status": "not_found", "message": f"No record found for order ID '{raw_order_id}'."})
+                # Check if order ID exists under a different contact to detect mismatch
+                unauthorized_check = WarehouseStock.query.filter(
+                    func.upper(func.replace(WarehouseStock.order_id, '-', '')) == clean_id
+                ).first()
 
-            # Safe extraction of values whether row exists in Stock, Delivery, or both
+                if unauthorized_check:
+                    return json.dumps({"status": "auth_failed", "message": f"Authentication failed: The email or phone number provided does not match our records for Order ID '{raw_order_id}'."})
+                
+                return json.dumps({"status": "not_found", "message": f"No order found for ID '{raw_order_id}'."})
+
             matched_id = stock.order_id if stock else delivery.order_id
-            item_name = stock.item_name if stock else "N/A"
-            dispatch_status = stock.dispatch_status if stock else "N/A"
-            hub_location = stock.hub_location if stock else "N/A"
-            
-            carrier = delivery.carrier if (delivery and delivery.carrier) else "Pending Carrier"
-            transit_status = delivery.transit_status if (delivery and delivery.transit_status) else "N/A"
-            delay_reason = delivery.delay_reason if (delivery and delivery.delay_reason) else "None"
-            estimated_delivery = delivery.estimated_delivery if (delivery and delivery.estimated_delivery) else "TBD"
-
             return json.dumps({
+                "status": "verified",
                 "order_id": matched_id,
-                "item_name": item_name,
-                "dispatch_status": dispatch_status,
-                "hub_location": hub_location,
-                "carrier": carrier,
-                "transit_status": transit_status,
-                "delay_reason": delay_reason,
-                "estimated_delivery": estimated_delivery
+                "item_name": stock.item_name if stock else "N/A",
+                "dispatch_status": stock.dispatch_status if stock else "N/A",
+                "hub_location": stock.hub_location if stock else "N/A",
+                "carrier": delivery.carrier if (delivery and delivery.carrier) else "Pending Carrier",
+                "transit_status": delivery.transit_status if (delivery and delivery.transit_status) else "N/A",
+                "delay_reason": delivery.delay_reason if (delivery and delivery.delay_reason) else "None",
+                "estimated_delivery": delivery.estimated_delivery if (delivery and delivery.estimated_delivery) else "TBD"
             })
 
         elif tool_name == "request_order_cancellation":
             raw_order_id = (tool_args.get("order_id") or "").strip()
-            if not raw_order_id:
-                return json.dumps({"status": "need_order_id", "message": "Ask the user to specify which Order ID they want to cancel."})
-
+            auth_contact = (tool_args.get("customer_email_or_phone") or "").strip().lower()
             reason = tool_args.get("reason", "Customer requested cancellation via Chatbot")
+
+            if not raw_order_id or not auth_contact:
+                return json.dumps({"status": "need_auth", "message": "Both Order ID and registered Email/Phone are required to process a cancellation."})
+
             clean_id = raw_order_id.upper().replace("-", "")
 
             stock = WarehouseStock.query.filter(
-                func.upper(func.replace(WarehouseStock.order_id, '-', '')) == clean_id
+                func.upper(func.replace(WarehouseStock.order_id, '-', '')) == clean_id,
+                or_(
+                    func.lower(WarehouseStock.customer_email) == auth_contact,
+                    func.lower(WarehouseStock.customer_phone) == auth_contact
+                )
             ).first()
 
             delivery = DeliveryStatus.query.filter(
-                func.upper(func.replace(DeliveryStatus.order_id, '-', '')) == clean_id
+                func.upper(func.replace(DeliveryStatus.order_id, '-', '')) == clean_id,
+                or_(
+                    func.lower(DeliveryStatus.customer_email) == auth_contact,
+                    func.lower(DeliveryStatus.customer_phone) == auth_contact
+                )
             ).first()
 
             if not stock and not delivery:
-                return json.dumps({"status": "error", "message": f"Order '{raw_order_id}' not found in database."})
+                return json.dumps({"status": "auth_failed", "message": "Authentication failed. The contact details do not match our order records."})
 
-            # Check dispatch state safely
-            current_status = stock.dispatch_status if stock else (delivery.transit_status if delivery else "Unknown")
+            current_status = stock.dispatch_status if stock else delivery.transit_status
             unshipped_statuses = ["Processing", "In Warehouse", "Pending"]
 
             if current_status in unshipped_statuses:
@@ -81,23 +103,26 @@ def execute_tool_call(tool_name, tool_args):
                     delivery.transit_status = "Cancelled"
                     delivery.delay_reason = reason
                 
+                recipient_email = stock.customer_email if (stock and stock.customer_email) else auth_contact
+                email_log = SentEmail(
+                    recipient=recipient_email,
+                    subject=f"Cancellation Confirmed: Order {raw_order_id}",
+                    body=f"Hello,\n\nYour order {raw_order_id} has been successfully cancelled.\nReason: {reason}\n\nThank you,\nProject Nexus Logistics"
+                )
+                db.session.add(email_log)
                 db.session.commit()
-                order_ref = stock.order_id if stock else delivery.order_id
-                return json.dumps({"status": "success", "message": f"Order {order_ref} has been successfully cancelled."})
+
+                return json.dumps({"status": "success", "message": f"Order {raw_order_id} has been cancelled and a confirmation email was logged to {recipient_email}."})
             else:
-                order_ref = stock.order_id if stock else delivery.order_id
                 ticket = SupportTicket(
-                    order_id=order_ref,
-                    issue_description=f"Cancellation request denied (Current status is '{current_status}'). Reason: {reason}",
+                    order_id=raw_order_id,
+                    issue_description=f"Cancellation denied (Status is '{current_status}'). Reason: {reason}",
                     priority="HIGH",
                     status="OPEN"
                 )
                 db.session.add(ticket)
                 db.session.commit()
-                return json.dumps({
-                    "status": "denied",
-                    "message": f"Cannot cancel order {order_ref} directly because it is already '{current_status}'. A support ticket (ID: {ticket.id}) was opened for review."
-                })
+                return json.dumps({"status": "denied", "message": f"Cannot cancel order {raw_order_id} because it is already '{current_status}'. Support Ticket #{ticket.id} generated for manual review."})
 
         elif tool_name == "create_support_ticket":
             order_id = tool_args.get("order_id", "GENERAL")
@@ -124,9 +149,6 @@ def execute_tool_call(tool_name, tool_args):
 
 
 def run_agent_workflow_with_logs(history, api_key):
-    """
-    Main orchestrator function executing customer queries with strict error-trapping.
-    """
     from app import app
     logs = []
 
@@ -142,13 +164,14 @@ def run_agent_workflow_with_logs(history, api_key):
                 "type": "function",
                 "function": {
                     "name": "get_order_status",
-                    "description": "Retrieve current status and tracking details for an order ID.",
+                    "description": "Retrieve status for an order. Requires customer email or phone for identity verification.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "order_id": {"type": "string", "description": "The order ID, e.g., ORD1001 or ord100"}
+                            "order_id": {"type": "string", "description": "The order ID, e.g., ORD1001"},
+                            "customer_email_or_phone": {"type": "string", "description": "The customer's email or phone number for authentication"}
                         },
-                        "required": ["order_id"]
+                        "required": ["order_id", "customer_email_or_phone"]
                     }
                 }
             },
@@ -156,14 +179,15 @@ def run_agent_workflow_with_logs(history, api_key):
                 "type": "function",
                 "function": {
                     "name": "request_order_cancellation",
-                    "description": "Request order cancellation. Only works if item is unshipped.",
+                    "description": "Cancel an order. Requires customer email or phone for verification.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "order_id": {"type": "string", "description": "The order ID to cancel"},
-                            "reason": {"type": "string", "description": "Reason for cancellation"}
+                            "order_id": {"type": "string", "description": "The order ID"},
+                            "customer_email_or_phone": {"type": "string", "description": "The customer's email or phone number"},
+                            "reason": {"type": "string", "description": "Cancellation reason"}
                         },
-                        "required": ["order_id"]
+                        "required": ["order_id", "customer_email_or_phone"]
                     }
                 }
             },
@@ -171,12 +195,12 @@ def run_agent_workflow_with_logs(history, api_key):
                 "type": "function",
                 "function": {
                     "name": "create_support_ticket",
-                    "description": "Create a support ticket for complaints or assistance.",
+                    "description": "Create a support ticket for complaints or address changes.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "order_id": {"type": "string", "description": "Related order ID"},
-                            "issue_description": {"type": "string", "description": "Description of the request"},
+                            "issue_description": {"type": "string", "description": "Description of request"},
                             "priority": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"], "description": "Priority level"}
                         },
                         "required": ["issue_description"]
@@ -189,8 +213,9 @@ def run_agent_workflow_with_logs(history, api_key):
             {
                 "role": "system",
                 "content": (
-                    "You are Nexus AI, a real-time logistics customer support assistant. "
-                    "When looking up an order status or cancellation request, extract the order ID provided by the user and call the appropriate tool."
+                    "You are Nexus AI, a secure real-time logistics support assistant. "
+                    "SECURITY RULE: ALWAYS ask the user for BOTH their Order ID and their registered Email address or Phone number before looking up order status or requesting a cancellation. "
+                    "Never reveal order details without verifying their email or phone number first."
                 )
             }
         ]

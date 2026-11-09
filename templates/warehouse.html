@@ -26,18 +26,26 @@
 
     <div class="container">
         <div class="row g-4">
-            <!-- Scan / Form Input Section -->
+            <!-- Receive Item Form -->
             <div class="col-md-4">
                 <div class="card p-4">
                     <h5 class="fw-bold mb-3">📦 Scan / Receive Item</h5>
                     <form action="/warehouse/add" method="POST">
-                        <div class="mb-3">
+                        <div class="mb-2">
                             <label class="form-label text-muted small fw-bold">ORDER ID</label>
                             <input type="text" name="order_id" class="form-control" placeholder="Order ID (e.g. ORD1005)" required>
                         </div>
-                        <div class="mb-3">
+                        <div class="mb-2">
                             <label class="form-label text-muted small fw-bold">ITEM NAME</label>
-                            <input type="text" name="item_name" class="form-control" placeholder="Item Name (e.g. Wireless Mouse)" required>
+                            <input type="text" name="item_name" class="form-control" placeholder="Item Name (e.g. Sony Headphones)" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small fw-bold">CUSTOMER EMAIL</label>
+                            <input type="email" name="customer_email" class="form-control" placeholder="e.g. user@example.com" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small fw-bold">CUSTOMER PHONE</label>
+                            <input type="text" name="customer_phone" class="form-control" placeholder="e.g. +19876543210">
                         </div>
                         <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">WAREHOUSE HUB</label>
@@ -48,7 +56,7 @@
                 </div>
             </div>
 
-            <!-- Table Section -->
+            <!-- Stock Table -->
             <div class="col-md-8">
                 <div class="card p-4">
                     <h5 class="fw-bold mb-3">🏢 Stock & Dispatch Control</h5>
@@ -58,8 +66,8 @@
                                 <tr>
                                     <th>Order ID</th>
                                     <th>Item</th>
+                                    <th>Customer Contact</th>
                                     <th>Status</th>
-                                    <th>Hub Location</th>
                                     <th>Handoff Action</th>
                                 </tr>
                             </thead>
@@ -70,11 +78,14 @@
                                         <td class="fw-bold">{{ item.order_id }}</td>
                                         <td>{{ item.item_name }}</td>
                                         <td>
+                                            <div class="small fw-bold">{{ item.customer_email or 'N/A' }}</div>
+                                            <div class="small text-muted">{{ item.customer_phone or '' }}</div>
+                                        </td>
+                                        <td>
                                             <span class="badge {% if item.dispatch_status == 'Handed Over to Courier' or item.dispatch_status == 'Delivered' %}bg-success{% elif item.dispatch_status == 'Cancelled' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
                                                 {{ item.dispatch_status }}
                                             </span>
                                         </td>
-                                        <td>{{ item.hub_location }}</td>
                                         <td>
                                             {% if item.dispatch_status == 'Processing' or item.dispatch_status == 'In Warehouse' %}
                                                 <form action="/warehouse/handoff/{{ item.order_id }}" method="POST">
