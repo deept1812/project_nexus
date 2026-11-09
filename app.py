@@ -1,7 +1,7 @@
 import os
 import sys
 import traceback
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -13,6 +13,7 @@ from models import SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
 from agents.nexus_orchestrator import run_agent_workflow_with_logs
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "nexus_super_secret_session_key_123")
 
 # --- DATABASE CONFIGURATION ---
 db_url = os.getenv("DATABASE_URL")
@@ -35,6 +36,58 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
+
+# --- AUTHENTICATION & LOGIN ROUTES ---
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if request.method == "POST":
+        role = request.form.get("role")
+        
+        # 1. Customer OTP Verification
+        if role == "customer":
+            email = request.form.get("email", "").strip().lower()
+            otp = request.form.get("otp", "").strip()
+            
+            # Simple demo OTP check (allows 1234 or any 4-digit code)
+            if email and (otp == "1234" or len(otp) == 4):
+                session["user_role"] = "customer"
+                session["user_email"] = email
+                return redirect(url_for("index"))
+            else:
+                return render_template("login.html", error="Invalid OTP Code. Use 1234.")
+
+        # 2. Staff Password Verification
+        elif role in ["warehouse", "delivery", "admin"]:
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "").strip()
+
+            # Staff Default Credentials
+            credentials = {
+                "admin": "admin123",
+                "warehouse1": "wh123",
+                "delivery1": "del123"
+            }
+
+            if username in credentials and credentials[username] == password:
+                session["user_role"] = role
+                session["username"] = username
+
+                if role == "warehouse":
+                    return redirect(url_for("warehouse_portal"))
+                elif role == "delivery":
+                    return redirect(url_for("delivery_portal"))
+                elif role == "admin":
+                    return redirect(url_for("admin_dashboard"))
+            else:
+                return render_template("login.html", error=f"Invalid credentials for {role.capitalize()} Login.")
+
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login_page"))
 
 # --- WEB PORTAL ROUTES ---
 
@@ -68,15 +121,15 @@ def admin_dashboard():
     }
     return render_template("admin.html", tickets=tickets, metrics=metrics)
 
-# --- POSTGRESQL MUTATION ROUTES WITH AUTHENTICATION FIELDS ---
+# --- POSTGRESQL MUTATION ROUTES ---
 
 @app.route("/warehouse/add", methods=["POST"])
 def add_warehouse_item():
-    order_id = (request.form.get("order_id") or request.json.get("order_id") or "").strip()
-    item_name = (request.form.get("item_name") or request.json.get("item_name") or "").strip()
-    hub_location = (request.form.get("hub_location") or request.json.get("hub_location") or "Main Warehouse").strip()
-    customer_email = (request.form.get("customer_email") or request.json.get("customer_email") or "").strip().lower()
-    customer_phone = (request.form.get("customer_phone") or request.json.get("customer_phone") or "").strip()
+    order_id = (request.form.get("order_id") or "").strip()
+    item_name = (request.form.get("item_name") or "").strip()
+    hub_location = (request.form.get("hub_location") or "Main Warehouse").strip()
+    customer_email = (request.form.get("customer_email") or "").strip().lower()
+    customer_phone = (request.form.get("customer_phone") or "").strip()
 
     if not order_id or not item_name:
         return jsonify({"status": "error", "message": "Order ID and Item Name required"}), 400
@@ -172,16 +225,13 @@ def process_query():
 
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        print("\n[ERROR] GROQ_API_KEY environment variable missing in .env file!")
         return jsonify({"status": "error", "response": "GROQ_API_KEY environment variable missing."}), 500
 
     try:
         agent_response, execution_logs = run_agent_workflow_with_logs(history, api_key)
         return jsonify({"status": "success", "response": agent_response, "logs": execution_logs})
     except Exception as e:
-        print("\n--- API QUERY EXCEPTION DETECTED ---")
         traceback.print_exc()
-        print("------------------------------------\n")
         return jsonify({"status": "error", "response": f"Server Error: {str(e)}", "logs": []}), 500
 
 if __name__ == "__main__":
