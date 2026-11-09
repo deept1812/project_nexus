@@ -3,219 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project Nexus | Customer Support Portal</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <title>Customer Dashboard - Project Nexus</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        html, body { height: 100%; margin: 0; padding: 0; background-color: #f4f7f6; overflow: hidden; }
-        body { display: flex; flex-direction: column; }
-        
-        .navbar { width: 100%; background: #0f172a; padding: 14px 30px; display: flex; justify-content: space-between; align-items: center; color: white; box-shadow: 0 2px 10px rgba(0,0,0,0.15); flex-shrink: 0; }
-        .navbar .brand { font-weight: bold; font-size: 1.1rem; }
-        .navbar .nav-links a { color: #94a3b8; text-decoration: none; margin-left: 18px; font-size: 0.88rem; font-weight: 500; }
-        .navbar .nav-links a.active { color: #38bdf8; font-weight: bold; border-bottom: 2px solid #38bdf8; padding-bottom: 4px; }
-        
-        .main-wrapper { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; overflow: hidden; }
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .navbar { background-color: #0f172a; }
+        .card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
 
-        .chat-container { width: 100%; max-width: 800px; height: 100%; max-height: calc(100vh - 120px); background: #ffffff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); overflow: hidden; display: flex; flex-direction: column; }
-        .chat-header { background: #1a252f; color: #ffffff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        .chat-header-info h2 { margin: 0; font-size: 1.2rem; }
-        .chat-header-info p { margin: 2px 0 0 0; font-size: 0.8rem; opacity: 0.8; }
-        .clear-chat-btn { background: #334155; color: #f8fafc; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; cursor: pointer; font-weight: 500; }
-        .clear-chat-btn:hover { background: #dc2626; color: white; }
+        /* Floating Help Button */
+        .help-fab {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 14px 24px;
+            font-weight: 600;
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+            cursor: pointer;
+            z-index: 1000;
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
 
-        .chat-body { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; background-color: #fafbfc; }
-        .message { max-width: 85%; padding: 12px 16px; border-radius: 10px; line-height: 1.5; font-size: 0.95rem; word-break: break-word; }
-        .message p { margin: 0 0 8px 0; }
-        .message p:last-child { margin-bottom: 0; }
-        .message ul, .message ol { margin: 4px 0 8px 0; padding-left: 20px; }
-        .user-message { align-self: flex-end; background: #007bff; color: white; border-bottom-right-radius: 2px; }
-        .agent-message { align-self: flex-start; background: #ffffff; color: #1a252f; border: 1px solid #e2e8f0; border-bottom-left-radius: 2px; border-left: 4px solid #007bff; }
-        
-        .options-panel { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-        .opt-btn { background: #f0f7ff; border: 1px solid #007bff; color: #007bff; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 0.88rem; font-weight: 500; text-align: left; transition: all 0.2s; }
-        .opt-btn:hover { background: #007bff; color: white; }
-        .opt-custom { border-color: #64748b; color: #475569; background: #f8fafc; }
-        .opt-danger { background: #fee2e2; border-color: #ef4444; color: #991b1b; text-align: center; font-weight: bold; }
-        .opt-danger:hover { background: #ef4444; color: white; }
-        
-        .feedback-form, .address-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
-        .feedback-form textarea, .address-form input { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; font-family: inherit; }
-        .feedback-form textarea:focus, .address-form input:focus { border-color: #007bff; }
-        .form-submit-btn { padding: 12px; background: #16a34a; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem; }
-        .form-submit-btn:hover { background: #15803d; }
+        .help-fab:hover {
+            background-color: #1d4ed8;
+            transform: translateY(-2px);
+        }
 
-        .chat-footer { padding: 16px; border-top: 1px solid #eef2f5; display: flex; gap: 10px; background: #ffffff; flex-shrink: 0; z-index: 10; }
-        .chat-footer input { flex: 1; padding: 12px 16px; border: 1px solid #dcdfe6; border-radius: 8px; outline: none; font-size: 0.95rem; }
-        .chat-footer button { padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; }
+        /* Inline Support Drawer Widget */
+        .chat-drawer {
+            position: fixed;
+            bottom: 90px;
+            right: 25px;
+            width: 380px;
+            height: 520px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        
+        .chat-header { background: #0f172a; color: white; padding: 1rem; }
+        .chat-body { flex: 1; padding: 1rem; overflow-y: auto; background: #f8fafc; }
+        .chat-footer { padding: 0.75rem; background: white; border-top: 1px solid #e2e8f0; }
+
+        .msg { margin-bottom: 0.75rem; max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 0.9rem; word-wrap: break-word; }
+        .msg-user { background: #2563eb; color: white; margin-left: auto; border-bottom-right-radius: 2px; }
+        .msg-bot { background: #e2e8f0; color: #0f172a; margin-right: auto; border-bottom-left-radius: 2px; }
     </style>
 </head>
 <body>
 
-<div class="navbar">
-    <div class="brand">⚡ Project Nexus Support</div>
-    <div class="nav-links">
-        <a href="/" class="active">👤 Customer App</a>
-        <a href="/inbox">📬 Mail Inbox</a>
-        <a href="/warehouse">🏬 Warehouse WMS</a>
-        <a href="/delivery">🚚 Delivery Partner</a>
-        <a href="/admin">🛡️ Admin Queue</a>
-    </div>
-</div>
-
-<div class="main-wrapper">
-    <div class="chat-container">
-        <div class="chat-header">
-            <div class="chat-header-info">
-                <h2>Project Nexus Assistant</h2>
-                <p>Real-Time AI Logistics Support</p>
-            </div>
-            <button class="clear-chat-btn" onclick="clearChatSession()">🗑️ Clear Chat</button>
+    <!-- Customer Navigation Bar -->
+    <nav class="navbar navbar-dark px-4 mb-4">
+        <a class="navbar-brand fw-bold" href="/customer">📦 My Orders & Tracking</a>
+        <div class="ms-auto d-flex align-items-center gap-3 text-white">
+            <span class="small">Account: <strong>{{ user_phone or user_email }}</strong></span>
+            <a class="btn btn-outline-light btn-sm fw-bold" href="/logout">Logout</a>
         </div>
-        
-        <div class="chat-body" id="chatBody"></div>
+    </nav>
 
-        <div class="chat-footer">
-            <input type="text" id="userInput" placeholder="Type your query or order ID..." onkeypress="handleKeyPress(event)" autocomplete="off">
-            <button id="sendBtn" onclick="sendMessage()">Send</button>
-        </div>
-    </div>
-</div>
+    <div class="container py-2">
+        <h4 class="fw-bold mb-4 text-dark">Your Linked Purchased Products</h4>
 
-<script>
-    let chatHistory = JSON.parse(localStorage.getItem('nexus_chat_history') || '[]');
-
-    window.onload = function() {
-        const chatBody = document.getElementById('chatBody');
-        const savedHTML = localStorage.getItem('nexus_chat_html');
-
-        if (savedHTML && savedHTML.trim() !== '') {
-            chatBody.innerHTML = savedHTML;
-            chatBody.scrollTop = chatBody.scrollHeight;
-        } else {
-            renderInitialWelcome();
-        }
-    };
-
-    function renderInitialWelcome() {
-        const chatBody = document.getElementById('chatBody');
-        chatBody.innerHTML = `
-            <div class="message agent-message">
-                <div>Hello! Welcome to Support. Select an option below or type your query/order ID.</div>
-                <div class="options-panel">
-                    <button class="opt-btn" onclick="sendOption('Track an order')">📦 Track an Order</button>
-                    <button class="opt-btn" onclick="sendOption('Cancel an order')">❌ Cancel an Order</button>
-                    <button class="opt-btn" onclick="sendOption('Change my delivery address')">📍 Update Delivery Address</button>
+        <div class="row g-3">
+            {% if orders %}
+                {% for item in orders %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="card p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold text-primary">{{ item.order_id }}</span>
+                            <span class="badge {% if item.dispatch_status == 'Delivered' or item.dispatch_status == 'Handed Over to Courier' %}bg-success{% elif item.dispatch_status == 'Cancelled' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                {{ item.dispatch_status }}
+                            </span>
+                        </div>
+                        <h6 class="fw-bold text-dark">{{ item.item_name }}</h6>
+                        <p class="text-muted small mb-2">Hub Location: {{ item.hub_location }}</p>
+                        <div class="border-top pt-2 mt-2 d-flex justify-content-between align-items-center text-muted small">
+                            <span>Contact: {{ item.customer_phone or item.customer_email or 'N/A' }}</span>
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-2 py-1" onclick="askAboutOrder('{{ item.order_id }}')">Ask Support 💬</button>
+                        </div>
+                    </div>
                 </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-12 text-center py-5">
+                    <div class="card p-5">
+                        <h5 class="text-muted">No orders linked to {{ user_phone or user_email }} yet.</h5>
+                        <p class="small text-muted mb-0">Newly placed warehouse orders with your registered contact details will automatically appear here.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Floating Help Button -->
+    <button class="help-fab" onclick="toggleChat()">💬 Help & Support</button>
+
+    <!-- Floating AI Support Chatbot Drawer -->
+    <div id="chatDrawer" class="chat-drawer d-none">
+        <div class="chat-header d-flex justify-content-between align-items-center">
+            <span class="fw-bold">🤖 Nexus AI Support</span>
+            <button class="btn-close btn-close-white btn-sm" onclick="toggleChat()"></button>
+        </div>
+        <div id="chatBody" class="chat-body">
+            <div class="msg msg-bot">Hello! I am Nexus AI. How can I assist you with your orders today?</div>
+        </div>
+        <div class="chat-footer">
+            <div class="input-group">
+                <input type="text" id="userInput" class="form-control form-control-sm" placeholder="Ask a question..." onkeydown="if(event.key==='Enter') sendMessage()">
+                <button class="btn btn-primary btn-sm fw-bold" onclick="sendMessage()">Send</button>
             </div>
-        `;
-        saveChatToStorage();
-    }
+        </div>
+    </div>
 
-    function saveChatToStorage() {
-        const chatBody = document.getElementById('chatBody');
-        localStorage.setItem('nexus_chat_history', JSON.stringify(chatHistory));
-        localStorage.setItem('nexus_chat_html', chatBody.innerHTML);
-    }
+    <script>
+        let chatHistory = [];
+        const userContact = "{{ user_phone or user_email }}";
 
-    function clearChatSession() {
-        localStorage.removeItem('nexus_chat_history');
-        localStorage.removeItem('nexus_chat_html');
-        chatHistory = [];
-        renderInitialWelcome();
-    }
-
-    function appendMessage(text, className, isHTML = false) {
-        const chatBody = document.getElementById('chatBody');
-        const msgDiv = document.createElement('div');
-        msgDiv.className = `message ${className}`;
-        
-        if (isHTML && typeof marked !== 'undefined') {
-            marked.setOptions({ breaks: true });
-            msgDiv.innerHTML = marked.parse(text);
-        } else if (isHTML) {
-            msgDiv.innerHTML = text.replace(/\n/g, '<br>');
-        } else {
-            msgDiv.innerText = text;
+        function toggleChat() {
+            const drawer = document.getElementById('chatDrawer');
+            drawer.classList.toggle('d-none');
         }
-        
-        chatBody.appendChild(msgDiv);
-        chatBody.scrollTop = chatBody.scrollHeight;
-        saveChatToStorage();
-        return msgDiv;
-    }
 
-    async function sendMessage(customText = null) {
-        const input = document.getElementById('userInput');
-        const sendBtn = document.getElementById('sendBtn');
-        const text = customText || input.value.trim();
-        
-        if (!text) return;
+        function askAboutOrder(orderId) {
+            const drawer = document.getElementById('chatDrawer');
+            drawer.classList.remove('d-none');
+            const input = document.getElementById('userInput');
+            input.value = `Where is my order ${orderId}? My registered contact is ${userContact}`;
+            sendMessage();
+        }
 
-        sendBtn.disabled = true;
-        appendMessage(text, 'user-message', false);
-        if (!customText) input.value = '';
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const text = input.value.trim();
+            if (!text) return;
 
-        chatHistory.push({ role: 'user', content: text });
-        saveChatToStorage();
+            const chatBody = document.getElementById('chatBody');
 
-        const loadingMsg = appendMessage("Checking system...", 'agent-message', false);
+            // Render User Message
+            const userMsg = document.createElement('div');
+            userMsg.className = 'msg msg-user';
+            userMsg.innerText = text;
+            chatBody.appendChild(userMsg);
 
-        try {
-            const res = await fetch('/api/query', {
+            chatHistory.push({ role: 'user', text: text });
+            input.value = '';
+            chatBody.scrollTop = chatBody.scrollHeight;
+
+            // Query AI Assistant Endpoint
+            fetch('/api/query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ history: chatHistory })
+            })
+            .then(res => res.json())
+            .then(data => {
+                const botMsg = document.createElement('div');
+                botMsg.className = 'msg msg-bot';
+                botMsg.innerText = data.response || 'Sorry, I could not retrieve that information.';
+                chatBody.appendChild(botMsg);
+                chatHistory.push({ role: 'assistant', text: data.response });
+                chatBody.scrollTop = chatBody.scrollHeight;
+            })
+            .catch(err => {
+                console.error('Chat API Error:', err);
             });
-            const data = await res.json();
-            
-            loadingMsg.remove();
-            if (data.status === "success") {
-                appendMessage(data.response, 'agent-message', true);
-                chatHistory.push({ role: 'assistant', content: data.response });
-                saveChatToStorage();
-            } else {
-                appendMessage("Error processing your query. Please try again.", 'agent-message', false);
-            }
-        } catch (err) {
-            loadingMsg.remove();
-            appendMessage("Error connecting to support servers.", 'agent-message', false);
-        } finally {
-            sendBtn.disabled = false;
         }
-    }
-
-    function sendOption(optText) { sendMessage(optText); }
-    function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
-
-    function focusCustomReason(orderId) {
-        const input = document.getElementById('userInput');
-        input.value = `Selected Reason for ${orderId}: Custom reason - `;
-        input.focus();
-    }
-
-    function submitFeedbackForm(event, orderId, selectedReason) {
-        event.preventDefault();
-        const textarea = document.getElementById('feedback_text');
-        const feedback = textarea ? textarea.value.trim() : "No detailed feedback provided";
-        
-        const query = `Feedback submitted for ${orderId}: Reason - ${selectedReason} | Additional Comments: ${feedback}`;
-        sendMessage(query);
-    }
-
-    function submitAddressForm(event, orderId) {
-        event.preventDefault();
-        const flat = document.getElementById('addr_flat').value.trim();
-        const street = document.getElementById('addr_street').value.trim();
-        const city = document.getElementById('addr_city').value.trim();
-        const pincode = document.getElementById('addr_pincode').value.trim();
-
-        const fullAddress = `${flat}, ${street}, ${city} - ${pincode}`;
-        const query = `Update address for ${orderId} to ${fullAddress}`;
-        
-        sendMessage(query);
-    }
-</script>
-
+    </script>
 </body>
 </html>

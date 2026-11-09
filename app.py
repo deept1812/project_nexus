@@ -1,19 +1,23 @@
 import os
 import sys
+import json
 import traceback
+import urllib.request
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from dotenv import load_dotenv
+from sqlalchemy import text, func, or_
 
+# Load environment variables
 load_dotenv(override=True)
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from extensions import db
-from models import SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
+from models import User, SupportTicket, SentEmail, WarehouseStock, DeliveryStatus
 from agents.nexus_orchestrator import run_agent_workflow_with_logs
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "nexus_super_secret_session_key_123")
+app.secret_key = os.getenv("SECRET_KEY", "nexus_production_secret_key_9988776655")
 
 # --- DATABASE CONFIGURATION ---
 db_url = os.getenv("DATABASE_URL")
@@ -34,46 +38,71 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
+# Schema creation and migration on app startup
 with app.app_context():
     db.create_all()
+    try:
+        with db.engine.connect() as conn:
+            # Fix Issue 2: Ensure support_tickets table exists with ID column
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS support_tickets (
+                    id SERIAL PRIMARY KEY,
+                    order_id VARCHAR(50) NOT NULL,
+                    issue_description TEXT NOT NULL,
+                    priority VARCHAR(20) DEFAULT 'MEDIUM',
+                    status VARCHAR(20) DEFAULT 'OPEN',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    email VARCHAR(120) UNIQUE NOT NULL,
+                    phone VARCHAR(20),
+                    otp_code VARCHAR(6),
+                    is_verified BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code VARCHAR(6);"))
+            conn.execute(text("ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS recipient VARCHAR(120);"))
+            conn.execute(text("ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS subject VARCHAR(200);"))
+            conn.execute(text("ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS body TEXT;"))
+            conn.execute(text("ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+            conn.execute(text("ALTER TABLE warehouse_stock ADD COLUMN IF NOT EXISTS customer_email VARCHAR(120);"))
+            conn.execute(text("ALTER TABLE warehouse_stock ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(20);"))
+            conn.execute(text("ALTER TABLE delivery_status ADD COLUMN IF NOT EXISTS customer_email VARCHAR(120);"))
+            conn.execute(text("ALTER TABLE delivery_status ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(20);"))
+            conn.commit()
+    except Exception as e:
+        print(f"Migration Notice: {e}")
 
 # --- AUTHENTICATION & LOGIN ROUTES ---
 
 @app.route("/")
 def home():
-    """Default landing page opens the Portal Authentication view."""
     return render_template("login.html")
 
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
     if request.method == "POST":
         role = request.form.get("role")
-        
-        # 1. Customer OTP Verification
-        if role == "customer":
-            email = request.form.get("email", "").strip().lower()
-            otp = request.form.get("otp", "").strip()
-            
-            if email and (otp == "1234" or len(otp) == 4):
-                session["user_role"] = "customer"
-                session["user_email"] = email
-                return redirect(url_for("customer_app"))
-            else:
-                return render_template("login.html", error="Invalid OTP Code. Use 1234 for testing.")
 
-        # 2. Staff Password Verification (Admin, Warehouse, Delivery)
-        elif role in ["warehouse", "delivery", "admin"]:
+        # Fix Issue 1: Enforce strict role-to-credential matching
+        role_credentials = {
+            "admin": ("admin", "admin123"),
+            "warehouse": ("warehouse1", "wh123"),
+            "delivery": ("delivery1", "del123")
+        }
+
+        if role in role_credentials:
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "").strip()
 
-            # Default Staff Credentials
-            credentials = {
-                "admin": "admin123",
-                "warehouse1": "wh123",
-                "delivery1": "del123"
-            }
+            expected_user, expected_pass = role_credentials[role]
 
-            if username in credentials and credentials[username] == password:
+            if username == expected_user and password == expected_pass:
                 session["user_role"] = role
                 session["username"] = username
 
@@ -84,9 +113,48 @@ def login_page():
                 elif role == "admin":
                     return redirect(url_for("admin_dashboard"))
             else:
-                return render_template("login.html", error=f"Invalid credentials for {role.capitalize()} Login.")
+                return render_template("login.html", error=f"Invalid credentials for {role.capitalize()} Portal.")
 
     return render_template("login.html")
+
+@app.route("/phone-login-verify", methods=["POST"])
+def phone_login_verify():
+    try:
+        data = request.get_json() or {}
+        user_json_url = data.get("user_json_url")
+
+        if not user_json_url:
+            return jsonify({"status": "error", "message": "Missing verification URL"}), 400
+
+        req = urllib.request.Request(user_json_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            user_data = json.loads(response.read().decode('utf-8'))
+
+        country_code = user_data.get("user_country_code", "")
+        phone_number = user_data.get("user_phone_number", "")
+        full_phone = f"{country_code}{phone_number}"
+
+        if not phone_number:
+            return jsonify({"status": "error", "message": "Failed to fetch verified phone number"}), 400
+
+        user = User.query.filter_by(phone=full_phone).first()
+        if not user:
+            user = User(
+                email=f"phone_{phone_number[-4:]}@nexus.com",
+                phone=full_phone
+            )
+            db.session.add(user)
+            db.session.commit()
+
+        session["user_role"] = "customer"
+        session["user_phone"] = full_phone
+        session["user_email"] = user.email
+
+        return jsonify({"status": "success", "message": "Authenticated successfully", "phone": full_phone})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/logout")
 def logout():
@@ -97,25 +165,52 @@ def logout():
 
 @app.route("/customer")
 def customer_app():
-    return render_template("index.html")
+    user_phone = session.get("user_phone", "")
+    user_email = session.get("user_email", "")
+
+    if not user_phone and not user_email:
+        return redirect(url_for("login_page"))
+
+    orders = []
+    if user_phone or user_email:
+        orders = WarehouseStock.query.filter(
+            or_(
+                func.lower(func.coalesce(WarehouseStock.customer_phone, '')) == user_phone.lower(),
+                func.lower(func.coalesce(WarehouseStock.customer_email, '')) == user_email.lower()
+            )
+        ).order_by(WarehouseStock.order_id.desc()).all()
+
+    return render_template("index.html", orders=orders, user_phone=user_phone, user_email=user_email)
 
 @app.route("/inbox")
 def customer_inbox():
+    if session.get("user_role") not in ["customer", "admin"]:
+        return redirect(url_for("login_page"))
+
     emails = SentEmail.query.order_by(SentEmail.sent_at.desc()).all()
     return render_template("inbox.html", emails=emails)
 
 @app.route("/warehouse")
 def warehouse_portal():
+    if session.get("user_role") not in ["warehouse", "admin"]:
+        return redirect(url_for("login_page"))
+
     items = WarehouseStock.query.order_by(WarehouseStock.order_id.desc()).all()
     return render_template("warehouse.html", items=items)
 
 @app.route("/delivery")
 def delivery_portal():
+    if session.get("user_role") not in ["delivery", "admin"]:
+        return redirect(url_for("login_page"))
+
     shipments = DeliveryStatus.query.order_by(DeliveryStatus.order_id.desc()).all()
     return render_template("delivery.html", shipments=shipments)
 
 @app.route("/admin")
 def admin_dashboard():
+    if session.get("user_role") != "admin":
+        return redirect(url_for("login_page"))
+
     tickets = SupportTicket.query.order_by(SupportTicket.created_at.desc()).all()
     metrics = {
         "total": SupportTicket.query.count(),
@@ -129,6 +224,9 @@ def admin_dashboard():
 
 @app.route("/warehouse/add", methods=["POST"])
 def add_warehouse_item():
+    if session.get("user_role") not in ["warehouse", "admin"]:
+        return redirect(url_for("login_page"))
+
     order_id = (request.form.get("order_id") or "").strip()
     item_name = (request.form.get("item_name") or "").strip()
     hub_location = (request.form.get("hub_location") or "Main Warehouse").strip()
@@ -165,6 +263,9 @@ def add_warehouse_item():
 
 @app.route("/warehouse/handoff/<order_id>", methods=["POST"])
 def handoff_to_courier(order_id):
+    if session.get("user_role") not in ["warehouse", "admin"]:
+        return redirect(url_for("login_page"))
+
     order_id = order_id.strip()
     item = db.session.get(WarehouseStock, order_id)
     shipment = db.session.get(DeliveryStatus, order_id)
@@ -193,6 +294,9 @@ def handoff_to_courier(order_id):
 
 @app.route("/delivery/update", methods=["POST"])
 def update_delivery():
+    if session.get("user_role") not in ["delivery", "admin"]:
+        return redirect(url_for("login_page"))
+
     order_id = request.form.get("order_id", "").strip()
     status = request.form.get("transit_status", "").strip()
     delay_reason = request.form.get("delay_reason", "").strip() or "None"
@@ -212,13 +316,16 @@ def update_delivery():
 
 @app.route("/admin/resolve/<int:ticket_id>", methods=["POST"])
 def resolve_ticket(ticket_id):
+    if session.get("user_role") != "admin":
+        return redirect(url_for("login_page"))
+
     ticket = db.session.get(SupportTicket, ticket_id)
     if ticket:
         ticket.status = "RESOLVED"
         db.session.commit()
     return redirect(url_for("admin_dashboard"))
 
-# --- AI AGENT ENDPOINT ---
+# --- GROQ AI AGENT ENDPOINT ---
 
 @app.route("/api/query", methods=["POST"])
 def process_query():
