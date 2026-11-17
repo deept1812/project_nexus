@@ -1,6 +1,6 @@
 # 🚀 Project Nexus – Autonomous AI Logistics & Supply Chain Platform
 
-🔗 **Live Demo:** [YOUR_RENDER_LINK_HERE]([YOUR_RENDER_LINK_HERE](https://project-nexus-0zk6.onrender.com/))
+🔗 **Live Demo:** [https://project-nexus-0zk6.onrender.com](https://project-nexus-0zk6.onrender.com)
 
 **Project Nexus** is a full-stack, multi-portal logistics management platform that tracks the end-to-end lifecycle of an order—from warehouse intake and courier dispatch to live customer tracking and AI-powered support.
 
