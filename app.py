@@ -169,7 +169,6 @@ def customer_app():
     if not user_phone and not user_email:
         return redirect(url_for("login_page"))
 
-    # Match both full international phone (+91...) and local 10-digit phone
     last_10_digits = user_phone[-10:] if len(user_phone) >= 10 else user_phone
 
     filters = [
@@ -180,6 +179,14 @@ def customer_app():
         filters.append(func.coalesce(WarehouseStock.customer_phone, '').endswith(last_10_digits))
 
     orders = WarehouseStock.query.filter(or_(*filters)).order_by(WarehouseStock.order_id.desc()).all()
+
+    # Always resolve single latest status from DeliveryStatus when available
+    for order in orders:
+        shipment = db.session.get(DeliveryStatus, order.order_id)
+        if shipment and shipment.transit_status and shipment.transit_status != "In Warehouse":
+            order.current_status = shipment.transit_status
+        else:
+            order.current_status = order.dispatch_status
 
     return render_template("index.html", orders=orders, user_phone=user_phone, user_email=user_email)
 
@@ -233,7 +240,6 @@ def add_warehouse_item():
     hub_location = (request.form.get("hub_location") or "Main Warehouse").strip()
     customer_email = (request.form.get("customer_email") or "").strip().lower()
 
-    # Combine country code and phone number cleanly
     country_code = (request.form.get("country_code") or "+91").strip()
     raw_phone = (request.form.get("customer_phone") or "").strip()
     if raw_phone:
@@ -316,7 +322,8 @@ def update_delivery():
         shipment.transit_status = status
         shipment.delay_reason = delay_reason
 
-    if stock and status in ["Delivered", "Cancelled"]:
+    # Always sync WarehouseStock with the latest delivery status
+    if stock and status:
         stock.dispatch_status = status
 
     db.session.commit()

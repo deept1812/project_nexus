@@ -100,8 +100,8 @@
                         <div>
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="fw-bold text-primary">{{ item.order_id }}</span>
-                                <span class="badge {% if item.dispatch_status == 'Delivered' or item.dispatch_status == 'Handed Over to Courier' %}bg-success{% elif item.dispatch_status == 'Cancelled' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
-                                    {{ item.dispatch_status }}
+                                <span class="badge {% if item.current_status == 'Delivered' %}bg-success{% elif item.current_status in ['Cancelled', 'Delayed'] %}bg-danger{% elif item.current_status in ['Out for Delivery', 'In Transit', 'Handed Over to Courier'] %}bg-primary{% else %}bg-warning text-dark{% endif %}">
+                                    {{ item.current_status }}
                                 </span>
                             </div>
                             <h6 class="fw-bold text-dark">{{ item.item_name }}</h6>
@@ -185,11 +185,17 @@
             })
             .then(res => res.json())
             .then(data => {
+                // Strip any duplicate "Dispatch Status:" line if returned by the AI
+                let cleanResponse = (data.response || 'Sorry, I could not retrieve that information.')
+                    .replace(/^\s*[-*]?\s*\*{0,2}Dispatch Status:?\*{0,2}.*$/gim, '')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+
                 const botMsg = document.createElement('div');
                 botMsg.className = 'msg msg-bot';
-                botMsg.innerText = data.response || 'Sorry, I could not retrieve that information.';
+                botMsg.innerText = cleanResponse;
                 chatBody.appendChild(botMsg);
-                chatHistory.push({ role: 'assistant', text: data.response });
+                chatHistory.push({ role: 'assistant', text: cleanResponse });
                 chatBody.scrollTop = chatBody.scrollHeight;
             })
             .catch(err => {
