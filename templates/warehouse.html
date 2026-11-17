@@ -14,21 +14,23 @@
 </head>
 <body>
 
-    <!-- Secured Clean Header (No cross-portal links) -->
-    <nav class="navbar navbar-dark px-4 mb-4">
-        <a class="navbar-brand fw-bold" href="/warehouse">🏭 Warehouse Management System</a>
-        <div class="ms-auto d-flex align-items-center gap-3 text-white">
-            <span class="small badge bg-primary px-3 py-2">Role: Warehouse Staff</span>
-            <a class="btn btn-outline-light btn-sm fw-bold px-3" href="/logout">Logout</a>
+    <!-- Responsive Secured Header -->
+    <nav class="navbar navbar-dark px-3 px-md-4 py-2 mb-4">
+        <div class="container-fluid p-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <a class="navbar-brand fw-bold fs-6 fs-md-5 m-0" href="/warehouse">🏭 Warehouse WMS</a>
+            <div class="d-flex align-items-center gap-2 text-white">
+                <span class="badge bg-primary px-2 py-1 d-none d-sm-inline">Role: Warehouse Staff</span>
+                <a class="btn btn-outline-light btn-sm fw-bold px-3" href="/logout">Logout</a>
+            </div>
         </div>
     </nav>
 
-    <div class="container-fluid px-4">
+    <div class="container-fluid px-3 px-md-4 pb-4">
         <div class="row g-4">
             
             <!-- Scan / Receive Item Form -->
-            <div class="col-md-4">
-                <div class="card p-4">
+            <div class="col-12 col-lg-4">
+                <div class="card p-3 p-md-4">
                     <h5 class="fw-bold mb-3 text-dark">📦 Scan / Receive Item</h5>
                     <form action="/warehouse/add" method="POST">
                         <div class="mb-3">
@@ -57,11 +59,11 @@
             </div>
 
             <!-- Stock & Dispatch Control Table -->
-            <div class="col-md-8">
-                <div class="card p-4">
+            <div class="col-12 col-lg-8">
+                <div class="card p-3 p-md-4">
                     <h5 class="fw-bold mb-3 text-dark">🏢 Stock & Dispatch Control</h5>
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle">
+                        <table class="table table-hover align-middle text-nowrap">
                             <thead>
                                 <tr>
                                     <th>Order ID</th>
@@ -88,7 +90,7 @@
                                         </td>
                                         <td>
                                             {% if item.dispatch_status == 'Processing' %}
-                                                <form action="/warehouse/handoff/{{ item.order_id }}" method="POST">
+                                                <form action="/warehouse/handoff/{{ item.order_id }}" method="POST" class="m-0">
                                                     <button type="submit" class="btn btn-sm btn-outline-success fw-bold">Handoff to Courier</button>
                                                 </form>
                                             {% else %}

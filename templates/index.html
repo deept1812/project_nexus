@@ -6,24 +6,25 @@
     <title>Customer Dashboard - Project Nexus</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding-bottom: 90px; }
         .navbar { background-color: #0f172a; }
         .card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
 
         /* Floating Help Button */
         .help-fab {
             position: fixed;
-            bottom: 25px;
-            right: 25px;
+            bottom: 20px;
+            right: 20px;
             background-color: #2563eb;
             color: white;
             border: none;
             border-radius: 50px;
-            padding: 14px 24px;
+            padding: 12px 20px;
             font-weight: 600;
-            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+            font-size: 0.95rem;
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
             cursor: pointer;
-            z-index: 1000;
+            z-index: 1050;
             transition: transform 0.2s ease, background-color 0.2s ease;
         }
 
@@ -32,23 +33,41 @@
             transform: translateY(-2px);
         }
 
-        /* Inline Support Drawer Widget */
+        /* Responsive Inline Support Drawer Widget */
         .chat-drawer {
             position: fixed;
-            bottom: 90px;
-            right: 25px;
-            width: 380px;
-            height: 520px;
+            bottom: 80px;
+            right: 16px;
+            left: 16px;
+            width: auto;
+            max-width: 400px;
+            margin-left: auto;
+            height: 70vh;
+            max-height: 520px;
             background: white;
             border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
             display: flex;
             flex-direction: column;
-            z-index: 1000;
+            z-index: 1050;
             overflow: hidden;
         }
+
+        @media (min-width: 576px) {
+            .chat-drawer {
+                left: auto;
+                right: 25px;
+                bottom: 90px;
+                width: 380px;
+            }
+            .help-fab {
+                bottom: 25px;
+                right: 25px;
+                padding: 14px 24px;
+            }
+        }
         
-        .chat-header { background: #0f172a; color: white; padding: 1rem; }
+        .chat-header { background: #0f172a; color: white; padding: 0.9rem 1rem; }
         .chat-body { flex: 1; padding: 1rem; overflow-y: auto; background: #f8fafc; }
         .chat-footer { padding: 0.75rem; background: white; border-top: 1px solid #e2e8f0; }
 
@@ -59,42 +78,46 @@
 </head>
 <body>
 
-    <!-- Customer Navigation Bar -->
-    <nav class="navbar navbar-dark px-4 mb-4">
-        <a class="navbar-brand fw-bold" href="/customer">📦 My Orders & Tracking</a>
-        <div class="ms-auto d-flex align-items-center gap-3 text-white">
-            <span class="small">Account: <strong>{{ user_phone or user_email }}</strong></span>
-            <a class="btn btn-outline-light btn-sm fw-bold" href="/logout">Logout</a>
+    <!-- Responsive Customer Navigation Bar -->
+    <nav class="navbar navbar-dark px-3 px-md-4 py-2 mb-4">
+        <div class="container-fluid p-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <a class="navbar-brand fw-bold fs-6 fs-md-5 m-0" href="/customer">📦 My Orders & Tracking</a>
+            <div class="d-flex align-items-center gap-2 gap-md-3 text-white">
+                <span class="small text-truncate" style="max-width: 150px;"><strong>{{ user_phone or user_email }}</strong></span>
+                <a class="btn btn-outline-light btn-sm fw-bold" href="/logout">Logout</a>
+            </div>
         </div>
     </nav>
 
-    <div class="container py-2">
-        <h4 class="fw-bold mb-4 text-dark">Your Linked Purchased Products</h4>
+    <div class="container px-3 px-md-4 py-1">
+        <h5 class="fw-bold mb-3 text-dark">Your Linked Purchased Products</h5>
 
         <div class="row g-3">
             {% if orders %}
                 {% for item in orders %}
-                <div class="col-md-6 col-lg-4">
-                    <div class="card p-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="fw-bold text-primary">{{ item.order_id }}</span>
-                            <span class="badge {% if item.dispatch_status == 'Delivered' or item.dispatch_status == 'Handed Over to Courier' %}bg-success{% elif item.dispatch_status == 'Cancelled' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
-                                {{ item.dispatch_status }}
-                            </span>
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="card p-3 h-100 d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-bold text-primary">{{ item.order_id }}</span>
+                                <span class="badge {% if item.dispatch_status == 'Delivered' or item.dispatch_status == 'Handed Over to Courier' %}bg-success{% elif item.dispatch_status == 'Cancelled' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                    {{ item.dispatch_status }}
+                                </span>
+                            </div>
+                            <h6 class="fw-bold text-dark">{{ item.item_name }}</h6>
+                            <p class="text-muted small mb-2">Hub Location: {{ item.hub_location }}</p>
                         </div>
-                        <h6 class="fw-bold text-dark">{{ item.item_name }}</h6>
-                        <p class="text-muted small mb-2">Hub Location: {{ item.hub_location }}</p>
                         <div class="border-top pt-2 mt-2 d-flex justify-content-between align-items-center text-muted small">
-                            <span>Contact: {{ item.customer_phone or item.customer_email or 'N/A' }}</span>
-                            <button class="btn btn-outline-primary btn-sm fw-bold px-2 py-1" onclick="askAboutOrder('{{ item.order_id }}')">Ask Support 💬</button>
+                            <span class="text-truncate me-2">{{ item.customer_phone or item.customer_email or 'N/A' }}</span>
+                            <button class="btn btn-outline-primary btn-sm fw-bold px-2 py-1 flex-shrink-0" onclick="askAboutOrder('{{ item.order_id }}')">Ask Support 💬</button>
                         </div>
                     </div>
                 </div>
                 {% endfor %}
             {% else %}
-                <div class="col-12 text-center py-5">
-                    <div class="card p-5">
-                        <h5 class="text-muted">No orders linked to {{ user_phone or user_email }} yet.</h5>
+                <div class="col-12 text-center py-4">
+                    <div class="card p-4 p-md-5">
+                        <h6 class="text-muted fw-bold">No orders linked to {{ user_phone or user_email }} yet.</h6>
                         <p class="small text-muted mb-0">Newly placed warehouse orders with your registered contact details will automatically appear here.</p>
                     </div>
                 </div>
@@ -116,8 +139,8 @@
         </div>
         <div class="chat-footer">
             <div class="input-group">
-                <input type="text" id="userInput" class="form-control form-control-sm" placeholder="Ask a question..." onkeydown="if(event.key==='Enter') sendMessage()">
-                <button class="btn btn-primary btn-sm fw-bold" onclick="sendMessage()">Send</button>
+                <input type="text" id="userInput" class="form-control" placeholder="Ask a question..." onkeydown="if(event.key==='Enter') sendMessage()">
+                <button class="btn btn-primary fw-bold px-3" onclick="sendMessage()">Send</button>
             </div>
         </div>
     </div>
@@ -146,7 +169,6 @@
 
             const chatBody = document.getElementById('chatBody');
 
-            // Render User Message
             const userMsg = document.createElement('div');
             userMsg.className = 'msg msg-user';
             userMsg.innerText = text;
@@ -156,7 +178,6 @@
             input.value = '';
             chatBody.scrollTop = chatBody.scrollHeight;
 
-            // Query AI Assistant Endpoint
             fetch('/api/query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

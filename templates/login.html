@@ -3,38 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus - Portal Authentication</title>
+    <title>Project Nexus - Portal Authentication</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body, html { height: 100%; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .login-container { display: flex; height: 100vh; }
+        body, html { min-height: 100%; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; }
+        .login-container { display: flex; flex-direction: column; min-height: 100vh; }
         
         .hero-section {
-            flex: 1;
-            background: linear-gradient(rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.85)), url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1350&q=80') center/cover no-repeat;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            padding: 4rem;
+            background: linear-gradient(rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.9)), url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1350&q=80') center/cover no-repeat;
+            padding: 2.5rem 1.5rem;
             color: white;
+            text-align: center;
         }
 
         .auth-section {
-            width: 480px;
+            width: 100%;
             background: #ffffff;
             display: flex;
             flex-direction: column;
             justify-content: center;
-            padding: 3rem;
-            box-shadow: -5px 0 25px rgba(0, 0, 0, 0.1);
-            overflow-y: auto;
+            padding: 2rem 1.5rem;
+            flex: 1;
+        }
+
+        /* Desktop & Tablet Split Layout */
+        @media (min-width: 768px) {
+            .login-container { flex-direction: row; height: 100vh; }
+            .hero-section {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                padding: 4rem;
+                text-align: left;
+            }
+            .auth-section {
+                width: 480px;
+                padding: 3rem;
+                box-shadow: -5px 0 25px rgba(0, 0, 0, 0.1);
+                overflow-y: auto;
+            }
         }
 
         .portal-block {
             border: 1.5px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 1.25rem 1.5rem;
-            margin-bottom: 1rem;
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.85rem;
             cursor: pointer;
             transition: all 0.2s ease-in-out;
             display: flex;
@@ -42,15 +57,15 @@
             justify-content: space-between;
         }
 
-        .portal-block:hover {
+        .portal-block:hover, .portal-block:active {
             border-color: #2563eb;
             background-color: #f8fafc;
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
         }
 
-        .portal-title { font-weight: 600; font-size: 1.1rem; color: #1e293b; }
-        .portal-sub { font-size: 0.85rem; color: #64748b; }
+        .portal-title { font-weight: 600; font-size: 1.05rem; color: #1e293b; }
+        .portal-sub { font-size: 0.82rem; color: #64748b; }
         .back-btn { cursor: pointer; color: #2563eb; font-size: 0.9rem; margin-bottom: 1rem; display: inline-block; }
     </style>
 </head>
@@ -58,8 +73,8 @@
 
 <div class="login-container">
     <div class="hero-section">
-        <h1 class="display-4 fw-bold">PROJECT NEXUS</h1>
-        <p class="lead">Autonomous Real-Time Logistics & Supply Chain Intelligence</p>
+        <h1 class="display-5 fw-bold mb-2">PROJECT NEXUS</h1>
+        <p class="lead mb-0 fs-6 fs-md-5">Autonomous Real-Time Logistics & Supply Chain Intelligence</p>
     </div>
 
     <div class="auth-section">
@@ -119,7 +134,7 @@
                 <div class="pe_signin_button" data-client-id="13366968090988931902">
                     <script src="https://www.phone.email/sign_in_button_v1.js" async></script>
                 </div>
-                <p class="text-muted small mt-2">Click above to verify via SMS / WhatsApp OTP</p>
+                <p class="text-muted small mt-2">Tap above to verify via SMS / WhatsApp OTP</p>
             </div>
         </div>
 
@@ -131,11 +146,11 @@
                 <input type="hidden" name="role" id="staffRole" value="">
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-muted">STAFF ID / USERNAME</label>
-                    <input type="text" name="username" class="form-control" placeholder="e.g. admin or warehouse1" required>
+                    <input type="text" name="username" class="form-control form-control-lg fs-6" placeholder="e.g. admin or warehouse1" required>
                 </div>
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-muted">PASSWORD</label>
-                    <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+                    <input type="password" name="password" class="form-control form-control-lg fs-6" placeholder="••••••••" required>
                 </div>
                 <button type="submit" class="btn btn-dark w-100 fw-bold py-2">Authenticate Staff</button>
             </form>
@@ -171,7 +186,6 @@
         document.getElementById('staffForm').classList.add('d-none');
     }
 
-    // Phone.email JS listener callback
     function phoneEmailListener(userObj) {
         var user_json_url = userObj.user_json_url;
 
