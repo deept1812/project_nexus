@@ -43,7 +43,6 @@ with app.app_context():
     db.create_all()
     try:
         with db.engine.connect() as conn:
-            # Fix Issue 2: Ensure support_tickets table exists with ID column
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS support_tickets (
                     id SERIAL PRIMARY KEY,
@@ -89,7 +88,6 @@ def login_page():
     if request.method == "POST":
         role = request.form.get("role")
 
-        # Fix Issue 1: Enforce strict role-to-credential matching
         role_credentials = {
             "admin": ("admin", "admin123"),
             "warehouse": ("warehouse1", "wh123"),
@@ -165,20 +163,23 @@ def logout():
 
 @app.route("/customer")
 def customer_app():
-    user_phone = session.get("user_phone", "")
-    user_email = session.get("user_email", "")
+    user_phone = session.get("user_phone", "").strip()
+    user_email = session.get("user_email", "").strip()
 
     if not user_phone and not user_email:
         return redirect(url_for("login_page"))
 
-    orders = []
-    if user_phone or user_email:
-        orders = WarehouseStock.query.filter(
-            or_(
-                func.lower(func.coalesce(WarehouseStock.customer_phone, '')) == user_phone.lower(),
-                func.lower(func.coalesce(WarehouseStock.customer_email, '')) == user_email.lower()
-            )
-        ).order_by(WarehouseStock.order_id.desc()).all()
+    # Match both full international phone (+91...) and local 10-digit phone
+    last_10_digits = user_phone[-10:] if len(user_phone) >= 10 else user_phone
+
+    filters = [
+        func.lower(func.coalesce(WarehouseStock.customer_phone, '')) == user_phone.lower(),
+        func.lower(func.coalesce(WarehouseStock.customer_email, '')) == user_email.lower()
+    ]
+    if last_10_digits:
+        filters.append(func.coalesce(WarehouseStock.customer_phone, '').endswith(last_10_digits))
+
+    orders = WarehouseStock.query.filter(or_(*filters)).order_by(WarehouseStock.order_id.desc()).all()
 
     return render_template("index.html", orders=orders, user_phone=user_phone, user_email=user_email)
 
@@ -231,7 +232,14 @@ def add_warehouse_item():
     item_name = (request.form.get("item_name") or "").strip()
     hub_location = (request.form.get("hub_location") or "Main Warehouse").strip()
     customer_email = (request.form.get("customer_email") or "").strip().lower()
-    customer_phone = (request.form.get("customer_phone") or "").strip()
+
+    # Combine country code and phone number cleanly
+    country_code = (request.form.get("country_code") or "+91").strip()
+    raw_phone = (request.form.get("customer_phone") or "").strip()
+    if raw_phone:
+        customer_phone = raw_phone if raw_phone.startswith("+") else f"{country_code}{raw_phone}"
+    else:
+        customer_phone = ""
 
     if not order_id or not item_name:
         return jsonify({"status": "error", "message": "Order ID and Item Name required"}), 400
